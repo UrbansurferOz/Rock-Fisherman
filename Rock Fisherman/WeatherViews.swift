@@ -740,7 +740,7 @@ struct TideChartView: View {
                 ZStack {
                     let plot = TidePlotData(service: weatherService, width: geo.size.width, height: geo.size.height)
 
-                    // Tide curve (left axis)
+                    // Tide curve (left axis) — smooth solid line
                     Path { path in
                         guard let first = plot.tidePoints.first else { return }
                         path.move(to: first)
@@ -748,13 +748,13 @@ struct TideChartView: View {
                     }
                     .stroke(Color.teal, lineWidth: 2)
 
-                    // Wave curve (right axis)
+                    // Wave curve (right axis) — thin solid, no dashes (removes dots)
                     Path { path in
                         guard let first = plot.wavePoints.first else { return }
                         path.move(to: first)
                         for p in plot.wavePoints.dropFirst() { path.addLine(to: p) }
                     }
-                    .stroke(Color.blue.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4,3]))
+                    .stroke(Color.blue.opacity(0.6), lineWidth: 1.2)
 
                     // Current tide dot
                     if let dot = plot.currentTidePoint {
@@ -763,17 +763,18 @@ struct TideChartView: View {
                             .position(dot)
                     }
 
-                    // Left axis label (current tide)
-                    if let current = plot.currentTideHeight {
-                        VStack(alignment: .leading) {
-                            Text(String(format: "%.1fm", current))
-                                .font(.caption)
-                                .bold()
-                                .foregroundColor(.teal)
-                            Spacer()
+                    // Left axis current value marker aligned with dot
+                    if let current = plot.currentTideHeight, let dot = plot.currentTidePoint {
+                        Path { p in
+                            p.move(to: CGPoint(x: 8, y: 4))
+                            p.addLine(to: CGPoint(x: 8, y: geo.size.height - 4))
                         }
-                        .frame(width: 50)
-                        .position(x: 30, y: 12)
+                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+
+                        Text(String(format: "%.1fm", current))
+                            .font(.caption)
+                            .foregroundColor(.teal)
+                            .position(x: 28, y: dot.y)
                     }
                 }
             }
@@ -793,7 +794,7 @@ private struct TidePlotData {
     let currentTideHeight: Double?
 
     init(service: WeatherService, width: CGFloat, height: CGFloat) {
-        // Build a window centered on now: previous and next highs/lows if available; otherwise 12h before/after
+        // Build a window centered on now between previous and next tide extreme
         let now = Date()
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
@@ -805,20 +806,43 @@ private struct TidePlotData {
             tidePoints = []; wavePoints = []; currentTidePoint = nil; currentTideHeight = nil; return
         }
 
-        // Compute y range for tide
-        let minTide = samples.map { $0.height }.min() ?? 0
-        let maxTide = samples.map { $0.height }.max() ?? 2
+        // Find previous and next extremes
+        var extremes: [(Date, Double)] = []
+        for d in service.dailyTideExtremes {
+            for h in d.highs { if let dt = formatter.date(from: String(h.time.prefix(16))) { extremes.append((dt, h.height)) } }
+            for l in d.lows { if let dt = formatter.date(from: String(l.time.prefix(16))) { extremes.append((dt, l.height)) } }
+        }
+        extremes.sort { $0.0 < $1.0 }
+        let prev = extremes.last { $0.0 <= now }
+        let next = extremes.first { $0.0 >= now && $0.0 != prev?.0 }
+
+        // Time window from prev to next; fallback ±6h
+        let startTime = prev?.0 ?? Calendar.current.date(byAdding: .hour, value: -6, to: now)!
+        let endTime = next?.0 ?? Calendar.current.date(byAdding: .hour, value: 6, to: now)!
+
+        // Filter samples within window
+        let windowed: [(TideHeight, Date)] = samples.compactMap { s in
+            guard let dt = formatter.date(from: s.time) else { return nil }
+            guard dt >= startTime && dt <= endTime else { return nil }
+            return (s, dt)
+        }
+        // Compute y range for tide from window
+        let minTide = windowed.map { $0.0.height }.min() ?? 0
+        let maxTide = windowed.map { $0.0.height }.max() ?? 2
         let tideRange = max(0.1, maxTide - minTide)
 
         // Compute y range for wave using hourly wave data aligned by time
-        let waveHeights = service.hourlyWaveData
+        let waveHeights = service.hourlyWaveData.filter { hw in
+            if let dt = formatter.date(from: hw.time) { return dt >= startTime && dt <= endTime }
+            return false
+        }
         let minWave = waveHeights.map { $0.waveHeight }.min() ?? 0
         let maxWave = waveHeights.map { $0.waveHeight }.max() ?? 2
         let waveRange = max(0.1, maxWave - minWave)
 
-        // X mapping over next ~24 hours around now
-        let times: [Date] = samples.compactMap { formatter.date(from: $0.time) }
-        guard let minTime = times.min(), let maxTime = times.max() else {
+        // X mapping over the window
+        let times: [Date] = windowed.map { $0.1 }
+        guard let minTime = times.min(), let maxTime = times.max(), minTime < maxTime else {
             tidePoints = []; wavePoints = []; currentTidePoint = nil; currentTideHeight = nil; return
         }
 
@@ -838,23 +862,21 @@ private struct TidePlotData {
             return height - CGFloat(ratio) * (height - 8) - 4
         }
 
-        tidePoints = zip(samples, times).map { sample, date in
-            CGPoint(x: x(for: date), y: yTide(for: sample.height))
+        tidePoints = windowed.map { pair in
+            CGPoint(x: x(for: pair.1), y: yTide(for: pair.0.height))
         }
 
         // Align wave series by hour
         let waveDict = Dictionary(uniqueKeysWithValues: service.hourlyWaveData.map { ($0.time, $0.waveHeight) })
-        wavePoints = samples.map { sample in
-            let wh = waveDict[sample.time] ?? minWave
-            let date = formatter.date(from: sample.time) ?? now
-            return CGPoint(x: x(for: date), y: yWave(for: wh))
+        wavePoints = windowed.map { pair in
+            let wh = waveDict[pair.0.time] ?? minWave
+            return CGPoint(x: x(for: pair.1), y: yWave(for: wh))
         }
 
         // Current dot
-        if let nearest = samples.min(by: { abs((formatter.date(from: $0.time) ?? now).timeIntervalSince(now)) < abs((formatter.date(from: $1.time) ?? now).timeIntervalSince(now)) }) {
-            currentTideHeight = nearest.height
-            let date = formatter.date(from: nearest.time) ?? now
-            currentTidePoint = CGPoint(x: x(for: date), y: yTide(for: nearest.height))
+        if let nearest = windowed.min(by: { abs($0.1.timeIntervalSince(now)) < abs($1.1.timeIntervalSince(now)) }) {
+            currentTideHeight = nearest.0.height
+            currentTidePoint = CGPoint(x: x(for: nearest.1), y: yTide(for: nearest.0.height))
         } else {
             currentTidePoint = nil
             currentTideHeight = nil

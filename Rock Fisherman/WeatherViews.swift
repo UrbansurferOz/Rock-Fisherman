@@ -295,6 +295,12 @@ struct HourlyForecastView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 45, alignment: .leading)
                     
+                    Text("Wave")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(width: 45, alignment: .leading)
+                    
                     Text("Fish")
                         .font(.caption2)
                         .fontWeight(.semibold)
@@ -387,6 +393,27 @@ struct HourlyForecastRow: View {
             }
             .frame(width: 45, alignment: .leading)
             
+            // Wave data
+            if let waveHeight = forecast.waveHeight {
+                VStack(spacing: 2) {
+                    Text(String(format: "%.1fm", waveHeight))
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                    
+                    if let waveDirection = forecast.waveDirection {
+                        Text("\(waveDirection)°")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(width: 45, alignment: .leading)
+            } else {
+                Text("N/A")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .frame(width: 45, alignment: .leading)
+            }
+            
             // Fishing indicator
             Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
                 .font(.caption2)
@@ -464,6 +491,23 @@ struct DailyForecastView: View {
                                         .foregroundColor(.gray)
                                     Text("\(Int(round(forecast.maxWindSpeed))) km/h")
                                         .font(.caption)
+                                }
+                                
+                                // Wave data
+                                if let waveHeight = forecast.waveHeight {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "water.waves")
+                                            .font(.caption)
+                                            .foregroundColor(.blue)
+                                        Text("\(String(format: "%.1fm", waveHeight))")
+                                            .font(.caption)
+                                        
+                                        if let waveDirection = forecast.waveDirection {
+                                            Text("\(waveDirection)°")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
                                 }
                             }
                             

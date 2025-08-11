@@ -8,6 +8,8 @@ class WeatherService: ObservableObject {
     @Published var hourlyForecast: [HourlyForecast] = []
     @Published var dailyForecast: [DailyForecast] = []
     @Published var waveData: WaveData?
+    @Published var hourlyWaveData: [HourlyWaveData] = []
+    @Published var dailyWaveData: [DailyWaveData] = []
     @Published var nearestWaveLocation: String?
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -60,6 +62,9 @@ class WeatherService: ObservableObject {
                 self.currentWeather = weatherResponse.current
                 self.hourlyForecast = weatherResponse.hourly.toHourlyForecasts()
                 self.dailyForecast = weatherResponse.daily.toDailyForecasts()
+                
+                // Merge wave data with forecasts
+                self.mergeWaveDataWithForecasts()
             }
             
         } catch {
@@ -70,7 +75,7 @@ class WeatherService: ObservableObject {
     }
     
     private func fetchWaveData(for location: CLLocation) async {
-        let urlString = "\(marineBaseURL)/marine?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&current=wave_height,wave_direction,wave_period&hourly=wave_height,wave_direction,wave_period&timezone=auto"
+        let urlString = "\(marineBaseURL)/marine?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&current=wave_height,wave_direction,wave_period&hourly=wave_height,wave_direction,wave_period&daily=wave_height_max,wave_direction,wave_period_max&timezone=auto"
         
         guard let url = URL(string: urlString) else { return }
         
@@ -89,6 +94,8 @@ class WeatherService: ObservableObject {
             
             await MainActor.run {
                 self.waveData = waveResponse.current
+                self.hourlyWaveData = waveResponse.hourly.toHourlyWaveData()
+                self.dailyWaveData = waveResponse.daily.toDailyWaveData()
                 self.nearestWaveLocation = nil
             }
             
@@ -115,7 +122,7 @@ class WeatherService: ObservableObject {
         ]
         
         for (name, coordinate) in coastalLocations {
-            let urlString = "\(marineBaseURL)/marine?latitude=\(coordinate.latitude)&longitude=\(coordinate.longitude)&current=wave_height,wave_direction,wave_period&timezone=auto"
+            let urlString = "\(marineBaseURL)/marine?latitude=\(coordinate.latitude)&longitude=\(coordinate.longitude)&current=wave_height,wave_direction,wave_period&hourly=wave_height,wave_direction,wave_period&daily=wave_height_max,wave_direction,wave_period_max&timezone=auto"
             
             guard let url = URL(string: urlString) else { continue }
             
@@ -130,6 +137,8 @@ class WeatherService: ObservableObject {
                 
                 await MainActor.run {
                     self.waveData = waveResponse.current
+                    self.hourlyWaveData = waveResponse.hourly.toHourlyWaveData()
+                    self.dailyWaveData = waveResponse.daily.toDailyWaveData()
                     self.nearestWaveLocation = "Using wave data from \(name) (nearest available location)"
                 }
                 return
@@ -142,7 +151,29 @@ class WeatherService: ObservableObject {
         // If no wave data found anywhere, set to nil
         await MainActor.run {
             self.waveData = nil
+            self.hourlyWaveData = []
+            self.dailyWaveData = []
             self.nearestWaveLocation = "No wave data available for this location"
+        }
+    }
+    
+    private func mergeWaveDataWithForecasts() {
+        // Merge hourly wave data
+        for i in 0..<hourlyForecast.count {
+            if i < hourlyWaveData.count {
+                hourlyForecast[i].waveHeight = hourlyWaveData[i].waveHeight
+                hourlyForecast[i].waveDirection = hourlyWaveData[i].waveDirection
+                hourlyForecast[i].wavePeriod = hourlyWaveData[i].wavePeriod
+            }
+        }
+        
+        // Merge daily wave data
+        for i in 0..<dailyForecast.count {
+            if i < dailyWaveData.count {
+                dailyForecast[i].waveHeight = dailyWaveData[i].maxWaveHeight
+                dailyForecast[i].waveDirection = dailyWaveData[i].waveDirection
+                dailyForecast[i].wavePeriod = dailyWaveData[i].maxWavePeriod
+            }
         }
     }
     
@@ -197,7 +228,10 @@ struct HourlyResponse: Codable {
                     precipitation: precip,
                     windSpeed: windSpeed,
                     windDirection: windDir,
-                    weatherCode: weather
+                    weatherCode: weather,
+                    waveHeight: nil, // Will be populated from wave data
+                    waveDirection: nil,
+                    wavePeriod: nil
                 )
             }
     }
@@ -231,7 +265,10 @@ struct DailyResponse: Codable {
                     minTemp: minTemp,
                     precipitation: precip,
                     maxWindSpeed: windSpeed,
-                    weatherCode: weather
+                    weatherCode: weather,
+                    waveHeight: nil, // Will be populated from wave data
+                    waveDirection: nil,
+                    wavePeriod: nil
                 )
             }
     }
@@ -324,6 +361,9 @@ struct HourlyForecast: Identifiable, Codable {
     let windSpeed: Double
     let windDirection: Int
     let weatherCode: Int
+    var waveHeight: Double?
+    var waveDirection: Int?
+    var wavePeriod: Double?
     
     var formattedTime: String {
         let formatter = DateFormatter()
@@ -374,6 +414,9 @@ struct DailyForecast: Identifiable, Codable {
     let precipitation: Double
     let maxWindSpeed: Double
     let weatherCode: Int
+    var waveHeight: Double?
+    var waveDirection: Int?
+    var wavePeriod: Double?
     
     var formattedDate: String {
         let formatter = DateFormatter()
@@ -417,6 +460,184 @@ struct DailyForecast: Identifiable, Codable {
 // MARK: - Wave Data Models
 struct WaveResponse: Codable {
     let current: WaveData
+    let hourly: HourlyWaveResponse
+    let daily: DailyWaveResponse
+}
+
+struct HourlyWaveResponse: Codable {
+    let time: [String]
+    let waveHeight: [Double]
+    let waveDirection: [Int]
+    let wavePeriod: [Double]
+    
+    enum CodingKeys: String, CodingKey {
+        case time
+        case waveHeight = "wave_height"
+        case waveDirection = "wave_direction"
+        case wavePeriod = "wave_period"
+    }
+    
+    func toHourlyWaveData() -> [HourlyWaveData] {
+        return zip(time, zip(waveHeight, zip(waveDirection, wavePeriod)))
+            .map { time, data in
+                let (height, (direction, period)) = data
+                return HourlyWaveData(
+                    time: time,
+                    waveHeight: height,
+                    waveDirection: direction,
+                    wavePeriod: period
+                )
+            }
+    }
+}
+
+struct DailyWaveResponse: Codable {
+    let time: [String]
+    let waveHeightMax: [Double]
+    let waveDirection: [Int]
+    let wavePeriodMax: [Double]
+    
+    enum CodingKeys: String, CodingKey {
+        case time
+        case waveHeightMax = "wave_height_max"
+        case waveDirection = "wave_direction"
+        case wavePeriodMax = "wave_period_max"
+    }
+    
+    func toDailyWaveData() -> [DailyWaveData] {
+        return zip(time, zip(waveHeightMax, zip(waveDirection, wavePeriodMax)))
+            .map { time, data in
+                let (height, (direction, period)) = data
+                return DailyWaveData(
+                    date: time,
+                    maxWaveHeight: height,
+                    waveDirection: direction,
+                    maxWavePeriod: period
+                )
+            }
+    }
+}
+
+struct HourlyWaveData: Identifiable, Codable {
+    let id = UUID()
+    let time: String
+    let waveHeight: Double
+    let waveDirection: Int
+    let wavePeriod: Double
+    
+    var formattedTime: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        if let date = formatter.date(from: time) {
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        }
+        return time
+    }
+    
+    var waveHeightFormatted: String {
+        return String(format: "%.1fm", waveHeight)
+    }
+    
+    var waveDirectionFormatted: String {
+        return "\(waveDirection)°"
+    }
+    
+    var wavePeriodFormatted: String {
+        return String(format: "%.1fs", wavePeriod)
+    }
+    
+    var isGoodFishing: Bool {
+        let heightRange: ClosedRange<Double> = 0.5...2.5
+        let periodRange: ClosedRange<Double> = 5.0...12.0
+        return heightRange.contains(waveHeight) && periodRange.contains(wavePeriod)
+    }
+    
+    var fishingCondition: String {
+        if isGoodFishing {
+            return "Good"
+        } else if waveHeight < 0.5 {
+            return "Too Calm"
+        } else if waveHeight > 2.5 {
+            return "Too Rough"
+        } else if wavePeriod < 5.0 {
+            return "Poor"
+        } else {
+            return "Fair"
+        }
+    }
+    
+    var fishingConditionColor: Color {
+        switch fishingCondition {
+        case "Good": return .green
+        case "Fair": return .orange
+        case "Poor": return .red
+        case "Too Calm": return .blue
+        case "Too Rough": return .red
+        default: return .gray
+        }
+    }
+}
+
+struct DailyWaveData: Identifiable, Codable {
+    let id = UUID()
+    let date: String
+    let maxWaveHeight: Double
+    let waveDirection: Int
+    let maxWavePeriod: Double
+    
+    var formattedDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        if let date = formatter.date(from: self.date) {
+            formatter.dateFormat = "EEE, MMM d"
+            return formatter.string(from: date)
+        }
+        return date
+    }
+    
+    var maxWaveHeightFormatted: String {
+        return String(format: "%.1fm", maxWaveHeight)
+    }
+    
+    var waveDirectionFormatted: String {
+        return "\(waveDirection)°"
+    }
+    
+    var maxWavePeriodFormatted: String {
+        return String(format: "%.1fs", maxWavePeriod)
+    }
+    
+    var isGoodFishing: Bool {
+        let heightRange: ClosedRange<Double> = 0.5...2.5
+        let periodRange: ClosedRange<Double> = 5.0...12.0
+        return heightRange.contains(maxWaveHeight) && periodRange.contains(maxWavePeriod)
+    }
+    
+    var fishingCondition: String {
+        if isGoodFishing {
+            return "Good"
+        } else if maxWaveHeight < 0.5 {
+            return "Too Calm"
+        } else if maxWaveHeight > 2.5 {
+            return "Too Rough"
+        } else if maxWavePeriod < 5.0 {
+            return "Poor"
+        } else {
+            return "Fair"
+        }
+    }
+    
+    var fishingConditionColor: Color {
+        switch fishingCondition {
+        case "Good": return .green
+        case "Fair": return .orange
+        case "Poor": return .red
+        case "Too Calm": return .blue
+        case "Too Rough": return .red
+        default: return .gray
+        }
+    }
 }
 
 struct WaveData: Codable {
@@ -456,10 +677,8 @@ struct WaveData: Codable {
     }
     
     var isGoodFishing: Bool {
-        // Good fishing conditions: moderate wave height (0.5m - 2.5m) and reasonable period
         let heightRange: ClosedRange<Double> = 0.5...2.5
         let periodRange: ClosedRange<Double> = 5.0...12.0
-        
         return heightRange.contains(waveHeight) && periodRange.contains(wavePeriod)
     }
     

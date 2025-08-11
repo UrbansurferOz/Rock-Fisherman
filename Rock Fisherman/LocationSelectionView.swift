@@ -319,6 +319,7 @@ struct LocationSearchView: View {
             await weatherService.fetchWeather(for: clLocation)
         }
         
+        // Close both the search view and the main location selection view
         isPresented = false
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

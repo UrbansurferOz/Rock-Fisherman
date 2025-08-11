@@ -85,17 +85,20 @@ struct ContentView: View {
                 locationManager.requestLocation()
             }
         }
-        .onChange(of: locationManager.location) { oldLocation, newLocation in
-            if let location = newLocation {
-                Task {
-                    await weatherService.fetchWeather(for: location)
-                }
-            }
-        }
         .onChange(of: locationManager.hasSelectedLocation) { oldValue, hasSelected in
             if hasSelected {
                 // Location has been selected, close the selection view
                 showingLocationSelection = false
+            }
+        }
+        .onChange(of: locationManager.location) { oldLocation, newLocation in
+            if let location = newLocation {
+                // When location changes, ensure location selection is closed
+                showingLocationSelection = false
+                
+                Task {
+                    await weatherService.fetchWeather(for: location)
+                }
             }
         }
         .sheet(isPresented: $showingLocationSelection) {
@@ -103,6 +106,12 @@ struct ContentView: View {
                 locationManager: locationManager,
                 weatherService: weatherService
             )
+            .onDisappear {
+                // Ensure the sheet is properly dismissed
+                if locationManager.hasSelectedLocation {
+                    showingLocationSelection = false
+                }
+            }
         }
     }
 }

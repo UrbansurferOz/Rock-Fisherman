@@ -4,14 +4,16 @@ A comprehensive iOS fishing weather app built with SwiftUI that provides real-ti
 
 ## ✨ Features
 
-### 🌤️ Weather Integration
-- **Real-time weather data** from Open Meteo API
-- **Current conditions** including temperature, humidity, wind, and precipitation
-- **24-hour hourly forecast** for detailed planning
-- **7-day daily forecast** for long-term trip planning
-- **Automatic location detection** for personalized weather data
+### 🌤️ Weather, Marine and Tide Integration
+- **Real-time weather data** from Open‑Meteo
+- **Marine data (waves)** from Open‑Meteo Marine (height, direction, period)
+- **Tide times and heights** from WorldTides™ (heights + daily extremes)
+- **Current conditions** including temperature, humidity, wind and precipitation
+- **24‑hour hourly forecast** (aligned grid table)
+- **7‑day forecast** including daily wave max and tide highs/lows
+- **Automatic location detection** and robust country‑aware search
 
-### 🎯 Fishing-Specific Features
+### 🎯 Fishing‑Specific Features
 - **Fishing condition scoring** based on weather parameters
 - **Optimal fishing indicators** for temperature, wind, and precipitation
 - **Visual fishing status** with color-coded conditions (Excellent, Good, Fair, Poor)
@@ -31,6 +33,8 @@ The app follows modern iOS development patterns:
 - **MVVM Architecture** with ObservableObject for state management
 - **Async/await** for modern concurrency handling
 - **Core Location** for location services
+- **MapKit** (LocalSearch + Completer) for country‑aware location search with AU bias
+- **Combine** for debounced search
 - **URLSession** for network requests
 - **Modular design** with separate services and view components
 
@@ -42,7 +46,9 @@ Rock Fisherman/
 ├── ContentView.swift            # Main tab view and navigation
 ├── WeatherService.swift         # Open Meteo API integration
 ├── LocationManager.swift        # Location services and permissions
-├── WeatherViews.swift           # Custom weather UI components
+├── WeatherViews.swift           # Custom weather + tide/wave UI components
+├── LocationSearchService.swift  # Country‑aware search (MapKit + geocoder)
+├── LocationSelectionView.swift  # Onboarding/location sheet
 ├── Info.plist                  # App permissions and configuration
 └── Assets.xcassets/            # App icons and assets
 ```
@@ -75,10 +81,28 @@ The app requires location access to provide weather data. The following keys are
 - `NSLocationAlwaysAndWhenInUseUsageDescription` - Location access for weather data
 
 ### API Configuration
-The app uses the free Open Meteo API which doesn't require authentication:
+
+Weather (Open‑Meteo)
 - Base URL: `https://api.open-meteo.com/v1/forecast`
 - No API key required
-- Rate limits: Generous for personal use
+
+Marine (Open‑Meteo Marine)
+- Base URL: `https://marine-api.open-meteo.com/v1/marine`
+- No API key required
+
+Tides (WorldTides™)
+- Base URL: `https://www.worldtides.info/api/v3`
+- Requires API key (see below)
+
+Add your WorldTides key:
+1. In Xcode, open your target `Info` tab (or edit `Info.plist`).
+2. Add a String key named `WORLDTIDES_API_KEY` with your API key value.
+3. Build and run. The app will fetch hourly tide heights and daily extremes for the next 3 days.
+
+Notes:
+- We request `heights&extremes&date=today&days=3&lat=<lat>&lon=<lon>&key=<key>`.
+- Times are rendered in local time; extremes populate daily High/Low values and times.
+- WorldTides requires copyright reproduction; see their docs at `https://www.worldtides.info/apidocs`.
 
 ## 📊 Weather Data
 
@@ -90,8 +114,8 @@ The app uses the free Open Meteo API which doesn't require authentication:
 - Weather code for conditions
 
 ### Forecast Data
-- **Hourly**: 24-hour forecast with temperature, wind, and precipitation
-- **Daily**: 7-day forecast with high/low temperatures and conditions
+- **Hourly**: 24‑hour forecast with temperature, wind, precipitation, wave height and tide height
+- **Daily**: 7‑day forecast with min/max temperature, weather, wave height max, and tide high/low heights (with times)
 
 ### Fishing Condition Algorithm
 The app calculates fishing conditions based on:
@@ -102,11 +126,11 @@ The app calculates fishing conditions based on:
 ## 🎨 UI Components
 
 ### Custom Views
-- `CurrentWeatherCard` - Main weather display
-- `FishingConditionsIndicator` - Fishing condition scoring
-- `HourlyForecastRow` - Hourly forecast items
-- `DailyForecastRow` - Daily forecast items
-- `FishingTipCard` - Educational fishing tips
+- `TideChartView` – 24‑hour tide curve zoomed between previous and next extreme; current height labeled on left axis with grid and hour marks
+- `CurrentWeatherView` – Main weather display and wave conditions
+- `HourlyForecastView` – Single Grid with aligned columns (Time/Temp/Wind/Rain/Wave/Tide/Fish)
+- `DailyForecastView` – 7‑day summary including wave and tide extremes
+- `FishingTipCard` – Educational fishing tips
 
 ### Design Principles
 - **Clarity**: Easy-to-read weather information
@@ -139,7 +163,6 @@ The app uses SwiftUI's built-in state management:
 ## 🚧 Future Enhancements
 
 Potential features for future versions:
-- **Tide information** for coastal fishing
 - **Moon phase data** for fishing timing
 - **Fishing spot recommendations**
 - **Weather alerts** for severe conditions
@@ -157,12 +180,13 @@ This project is for educational and personal use.
 
 ## 🙏 Acknowledgments
 
-- **Open Meteo** for free weather API
-- **Apple** for SwiftUI framework
+- **Open‑Meteo** for free weather and marine APIs
+- **WorldTides™** for global tide predictions ([API docs](https://www.worldtides.info/apidocs))
+- **Apple** for SwiftUI, MapKit, Core Location
 - **Fishing community** for condition insights
 
 ---
 
 **Happy Fishing! 🎣**
 
-*Built with ❤️ using SwiftUI and Open Meteo*
+*Built with ❤️ using SwiftUI, Open‑Meteo and WorldTides™*

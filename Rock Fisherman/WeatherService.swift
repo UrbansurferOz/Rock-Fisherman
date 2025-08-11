@@ -254,13 +254,31 @@ struct TideHeight: Identifiable, Codable {
     let id = UUID()
     let time: String // yyyy-MM-dd'T'HH:mm
     let height: Double // meters
+
+    enum CodingKeys: String, CodingKey {
+        case time, height
+    }
+}
+
+struct TideExtreme: Identifiable, Codable {
+    let id = UUID()
+    let time: String
+    let height: Double
+
+    enum CodingKeys: String, CodingKey {
+        case time, height
+    }
 }
 
 struct DailyTide: Identifiable, Codable {
     let id = UUID()
     let date: String // yyyy-MM-dd
-    let highs: [(time: String, height: Double)]
-    let lows: [(time: String, height: Double)]
+    let highs: [TideExtreme]
+    let lows: [TideExtreme]
+
+    enum CodingKeys: String, CodingKey {
+        case date, highs, lows
+    }
 }
 
 enum TideServiceError: Error { case notAvailable }
@@ -292,8 +310,8 @@ class TideService {
         var extremes: [DailyTide] = []
         for (day, arr) in byDay.sorted(by: { $0.key < $1.key }) {
             // Pick top 2 highs and lows
-            let highs = Array(arr.sorted(by: { $0.height > $1.height }).prefix(2)).map { ($0.time, $0.height) }
-            let lows = Array(arr.sorted(by: { $0.height < $1.height }).prefix(2)).map { ($0.time, $0.height) }
+            let highs = Array(arr.sorted(by: { $0.height > $1.height }).prefix(2)).map { TideExtreme(time: $0.time, height: $0.height) }
+            let lows = Array(arr.sorted(by: { $0.height < $1.height }).prefix(2)).map { TideExtreme(time: $0.time, height: $0.height) }
             extremes.append(DailyTide(date: day, highs: highs, lows: lows))
         }
         return (heights, extremes)

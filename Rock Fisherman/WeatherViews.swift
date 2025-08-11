@@ -731,7 +731,7 @@ struct TideChartView: View {
             HStack {
                 Image(systemName: "water.waves.and.arrow.up")
                     .foregroundColor(.teal)
-                Text("Tide and Wave")
+                Text("24 Hour Forecast")
                     .font(.headline)
                 Spacer()
             }
@@ -739,6 +739,22 @@ struct TideChartView: View {
             GeometryReader { geo in
                 ZStack {
                     let plot = TidePlotData(service: weatherService, width: geo.size.width, height: geo.size.height)
+
+                    // Grid: horizontal and vertical
+                    ForEach(Array(plot.hGridYs.enumerated()), id: \.offset) { _, y in
+                        Path { p in
+                            p.move(to: CGPoint(x: plot.contentRect.minX, y: y))
+                            p.addLine(to: CGPoint(x: plot.contentRect.maxX, y: y))
+                        }
+                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                    }
+                    ForEach(Array(plot.vGridXs.enumerated()), id: \.offset) { _, x in
+                        Path { p in
+                            p.move(to: CGPoint(x: x, y: plot.contentRect.minY))
+                            p.addLine(to: CGPoint(x: x, y: plot.contentRect.maxY))
+                        }
+                        .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+                    }
 
                     // Tide curve (left axis) — smooth solid line
                     Path { path in
@@ -758,10 +774,10 @@ struct TideChartView: View {
                     // Left axis current value marker aligned with dot
                     if let current = plot.currentTideHeight, let dot = plot.currentTidePoint {
                         Path { p in
-                            p.move(to: CGPoint(x: 10, y: 4))
-                            p.addLine(to: CGPoint(x: 10, y: geo.size.height - 4))
+                            p.move(to: CGPoint(x: plot.axisX, y: plot.contentRect.minY))
+                            p.addLine(to: CGPoint(x: plot.axisX, y: plot.contentRect.maxY))
                         }
-                        .stroke(Color.gray.opacity(0.6), lineWidth: 1.2)
+                        .stroke(Color.gray.opacity(0.7), lineWidth: 1.2)
 
                         Text(String(format: "%.1fm", current))
                             .font(.footnote).bold()
@@ -769,7 +785,7 @@ struct TideChartView: View {
                             .padding(.horizontal, 4)
                             .background(.ultraThinMaterial)
                             .cornerRadius(4)
-                            .position(x: 36, y: dot.y)
+                            .position(x: plot.axisX + 18, y: dot.y)
                     }
 
                     // X-axis labels for previous and next extremes
@@ -793,6 +809,22 @@ struct TideChartView: View {
                         }
                         .position(next)
                     }
+
+                    // Y-axis min / max labels
+                    Text(plot.yMaxText)
+                        .font(.caption2).foregroundColor(.secondary)
+                        .position(plot.yMaxPoint)
+                    Text(plot.yMinText)
+                        .font(.caption2).foregroundColor(.secondary)
+                        .position(plot.yMinPoint)
+
+                    // Bottom time labels (every 3h)
+                    ForEach(Array(zip(plot.vGridXs, plot.xLabels)), id: \.0) { x, label in
+                        Text(label)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .position(x: x, y: plot.contentRect.maxY + 10)
+                    }
                 }
             }
             .frame(height: 140)
@@ -812,6 +844,15 @@ private struct TidePlotData {
     let nextLabelPoint: CGPoint?
     let prevLabel: String
     let nextLabel: String
+    let yMinText: String
+    let yMaxText: String
+    let yMinPoint: CGPoint
+    let yMaxPoint: CGPoint
+    let axisX: CGFloat
+    let contentRect: CGRect
+    let hGridYs: [CGFloat]
+    let vGridXs: [CGFloat]
+    let xLabels: [String]
 
     init(service: WeatherService, width: CGFloat, height: CGFloat) {
         // Build a window centered on now between previous and next tide extreme
@@ -819,11 +860,19 @@ private struct TidePlotData {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
 
+        // Layout insets for axes/labels
+        let insetLeft: CGFloat = 40
+        let insetRight: CGFloat = 12
+        let insetTop: CGFloat = 8
+        let insetBottom: CGFloat = 24
+        contentRect = CGRect(x: insetLeft, y: insetTop, width: max(1, width - insetLeft - insetRight), height: max(1, height - insetTop - insetBottom))
+        axisX = contentRect.minX
+
         // Map hourly tide samples to points
         let samples = service.hourlyTide
         // Guard for empty
         guard !samples.isEmpty else {
-            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; return
+            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; yMinText = ""; yMaxText = ""; yMinPoint = .zero; yMaxPoint = .zero; axisX = insetLeft; contentRect = CGRect(x: insetLeft, y: insetTop, width: width - insetLeft - insetRight, height: height - insetTop - insetBottom); return
         }
 
         // Find previous and next extremes
@@ -847,34 +896,25 @@ private struct TidePlotData {
             return (s, dt)
         }
         // Compute y range for tide from window
-        let minTide = windowed.map { $0.0.height }.min() ?? 0
-        let maxTide = windowed.map { $0.0.height }.max() ?? 2
+        let minTide = floor((windowed.map { $0.0.height }.min() ?? 0) * 10) / 10
+        let maxTide = ceil((windowed.map { $0.0.height }.max() ?? 2) * 10) / 10
         let tideRange = max(0.1, maxTide - minTide)
-
-        // Compute y range for wave using hourly wave data aligned by time
-        let waveHeights = service.hourlyWaveData.filter { hw in
-            if let dt = formatter.date(from: hw.time) { return dt >= startTime && dt <= endTime }
-            return false
-        }
-        let minWave = waveHeights.map { $0.waveHeight }.min() ?? 0
-        let maxWave = waveHeights.map { $0.waveHeight }.max() ?? 2
-        let waveRange = max(0.1, maxWave - minWave)
 
         // X mapping over the window
         let times: [Date] = windowed.map { $0.1 }
         guard let minTime = times.min(), let maxTime = times.max(), minTime < maxTime else {
-            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; return
+            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; yMinText = ""; yMaxText = ""; yMinPoint = .zero; yMaxPoint = .zero; hGridYs = []; vGridXs = []; xLabels = []; return
         }
 
         func x(for date: Date) -> CGFloat {
             let span = max(1, maxTime.timeIntervalSince(minTime))
             let ratio = (date.timeIntervalSince(minTime)) / span
-            return CGFloat(ratio) * (width - 8) + 4
+            return contentRect.minX + CGFloat(ratio) * contentRect.width
         }
 
         func yTide(for h: Double) -> CGFloat {
             let ratio = (h - minTide) / tideRange
-            return height - CGFloat(ratio) * (height - 8) - 4
+            return contentRect.maxY - CGFloat(ratio) * contentRect.height
         }
 
         func yWave(for h: Double) -> CGFloat {
@@ -900,18 +940,44 @@ private struct TidePlotData {
         timeLabelFmt.dateFormat = "HH:mm"
         if let p = prev?.0 {
             prevLabel = timeLabelFmt.string(from: p)
-            prevLabelPoint = CGPoint(x: x(for: p), y: height - 10)
+            prevLabelPoint = CGPoint(x: x(for: p), y: contentRect.maxY + 10)
         } else {
             prevLabel = ""
             prevLabelPoint = nil
         }
         if let n = next?.0 {
             nextLabel = timeLabelFmt.string(from: n)
-            nextLabelPoint = CGPoint(x: x(for: n), y: height - 10)
+            nextLabelPoint = CGPoint(x: x(for: n), y: contentRect.maxY + 10)
         } else {
             nextLabel = ""
             nextLabelPoint = nil
         }
+
+        // Y-axis min/max labels
+        yMaxText = String(format: "%.1fm", maxTide)
+        yMinText = String(format: "%.1fm", minTide)
+        yMaxPoint = CGPoint(x: axisX + 18, y: contentRect.minY)
+        yMinPoint = CGPoint(x: axisX + 18, y: contentRect.maxY)
+
+        // Grid lines: 5 horizontal bands
+        hGridYs = (0...4).map { i in
+            let ratio = CGFloat(i) / 4.0
+            return contentRect.maxY - ratio * contentRect.height
+        }
+        // Vertical grid every 3 hours across window
+        let totalHours = max(1.0, maxTime.timeIntervalSince(minTime) / 3600.0)
+        let stepHours: Double = 3
+        var xs: [CGFloat] = []
+        var labels: [String] = []
+        var t = minTime
+        let labelFmt = DateFormatter(); labelFmt.dateFormat = "HH"
+        while t <= maxTime {
+            xs.append(x(for: t))
+            labels.append(labelFmt.string(from: t))
+            t = Date(timeInterval: stepHours * 3600, since: t)
+        }
+        vGridXs = xs
+        xLabels = labels
     }
 }
 

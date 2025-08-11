@@ -105,7 +105,28 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                         if let items = auResp?.mapItems {
                             placemarks.append(contentsOf: items.compactMap { $0.placemark })
                         }
-                        self.handlePlacemarkResults(from: "MKLocalSearch+AU", query: rawQuery, placemarks: placemarks)
+                        // If still no AU results, try explicit country-constrained query via MKLocalSearch
+                        let stillNoAU = !placemarks.contains { $0.isoCountryCode?.uppercased() == self.primaryCountryCode }
+                        if stillNoAU {
+                            let auTextReq = MKLocalSearch.Request()
+                            auTextReq.naturalLanguageQuery = "\(rawQuery) Australia"
+                            auTextReq.resultTypes = [.address]
+                            auTextReq.region = self.australiaRegion
+                            MKLocalSearch(request: auTextReq).start { auTextResp, _ in
+                                if let items2 = auTextResp?.mapItems {
+                                    placemarks.append(contentsOf: items2.compactMap { $0.placemark })
+                                }
+                                // As a final fallback, call geocoder scoped to AU
+                                let hasNowAU = placemarks.contains { $0.isoCountryCode?.uppercased() == self.primaryCountryCode }
+                                if hasNowAU {
+                                    self.handlePlacemarkResults(from: "MKLocalSearch+AUText", query: rawQuery, placemarks: placemarks)
+                                } else {
+                                    self.performCLGeocoderSearch(rawQuery: rawQuery)
+                                }
+                            }
+                        } else {
+                            self.handlePlacemarkResults(from: "MKLocalSearch+AU", query: rawQuery, placemarks: placemarks)
+                        }
                     }
                 } else {
                     self.handlePlacemarkResults(from: "MKLocalSearch", query: rawQuery, placemarks: placemarks)
@@ -189,7 +210,13 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         // Avoid acting on stale results
         guard !currentFragment.isEmpty, currentFragment == lastQuery else { return }
 
-        let completions = Array(completer.results.prefix(6))
+        // Prefer AU completions by filtering if possible
+        let rawCompletions = Array(completer.results.prefix(12))
+        let auCompletions = rawCompletions.filter { comp in
+            let lc = comp.subtitle.lowercased()
+            return lc.contains("australia") || lc.contains("nsw") || lc.contains("new south wales") || lc.contains("qld") || lc.contains("vic") || lc.contains("wa") || lc.contains("sa") || lc.contains("tas") || lc.contains("act") || lc.contains("nt")
+        }
+        let completions = auCompletions.isEmpty ? Array(rawCompletions.prefix(6)) : Array(auCompletions.prefix(6))
         if completions.isEmpty { return }
 
         print("Completer returned \(completions.count) suggestions for query=\(currentFragment)")

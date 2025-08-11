@@ -848,8 +848,8 @@ private struct TidePlotData {
     let yMaxText: String
     let yMinPoint: CGPoint
     let yMaxPoint: CGPoint
-    let axisX: CGFloat
-    let contentRect: CGRect
+    var axisX: CGFloat
+    var contentRect: CGRect
     let hGridYs: [CGFloat]
     let vGridXs: [CGFloat]
     let xLabels: [String]
@@ -860,22 +860,42 @@ private struct TidePlotData {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
 
-        // Layout insets for axes/labels
+        // Layout insets for axes/labels (locals)
         let insetLeft: CGFloat = 40
         let insetRight: CGFloat = 12
         let insetTop: CGFloat = 8
         let insetBottom: CGFloat = 24
-        contentRect = CGRect(x: insetLeft, y: insetTop, width: max(1, width - insetLeft - insetRight), height: max(1, height - insetTop - insetBottom))
-        axisX = contentRect.minX
+        let contentRectLocal = CGRect(
+            x: insetLeft,
+            y: insetTop,
+            width: max(1, width - insetLeft - insetRight),
+            height: max(1, height - insetTop - insetBottom)
+        )
+        let axisXLocal = contentRectLocal.minX
 
-        // Map hourly tide samples to points
+        // Samples
         let samples = service.hourlyTide
-        // Guard for empty
-        guard !samples.isEmpty else {
-            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; yMinText = ""; yMaxText = ""; yMinPoint = .zero; yMaxPoint = .zero; axisX = insetLeft; contentRect = CGRect(x: insetLeft, y: insetTop, width: width - insetLeft - insetRight, height: height - insetTop - insetBottom); return
+        if samples.isEmpty {
+            self.tidePoints = []
+            self.currentTidePoint = nil
+            self.currentTideHeight = nil
+            self.prevLabelPoint = nil
+            self.nextLabelPoint = nil
+            self.prevLabel = ""
+            self.nextLabel = ""
+            self.yMinText = ""
+            self.yMaxText = ""
+            self.yMinPoint = .zero
+            self.yMaxPoint = .zero
+            self.axisX = axisXLocal
+            self.contentRect = contentRectLocal
+            self.hGridYs = []
+            self.vGridXs = []
+            self.xLabels = []
+            return
         }
 
-        // Find previous and next extremes
+        // Extremes
         var extremes: [(Date, Double)] = []
         for d in service.dailyTideExtremes {
             for h in d.highs { if let dt = formatter.date(from: String(h.time.prefix(16))) { extremes.append((dt, h.height)) } }
@@ -885,99 +905,122 @@ private struct TidePlotData {
         let prev = extremes.last { $0.0 <= now }
         let next = extremes.first { $0.0 >= now && $0.0 != prev?.0 }
 
-        // Time window from prev to next; fallback ±6h
         let startTime = prev?.0 ?? Calendar.current.date(byAdding: .hour, value: -6, to: now)!
         let endTime = next?.0 ?? Calendar.current.date(byAdding: .hour, value: 6, to: now)!
 
-        // Filter samples within window
+        // Windowed samples
         let windowed: [(TideHeight, Date)] = samples.compactMap { s in
             guard let dt = formatter.date(from: s.time) else { return nil }
             guard dt >= startTime && dt <= endTime else { return nil }
             return (s, dt)
         }
-        // Compute y range for tide from window
         let minTide = floor((windowed.map { $0.0.height }.min() ?? 0) * 10) / 10
         let maxTide = ceil((windowed.map { $0.0.height }.max() ?? 2) * 10) / 10
         let tideRange = max(0.1, maxTide - minTide)
 
-        // X mapping over the window
         let times: [Date] = windowed.map { $0.1 }
         guard let minTime = times.min(), let maxTime = times.max(), minTime < maxTime else {
-            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; yMinText = ""; yMaxText = ""; yMinPoint = .zero; yMaxPoint = .zero; hGridYs = []; vGridXs = []; xLabels = []; return
+            self.tidePoints = []
+            self.currentTidePoint = nil
+            self.currentTideHeight = nil
+            self.prevLabelPoint = nil
+            self.nextLabelPoint = nil
+            self.prevLabel = ""
+            self.nextLabel = ""
+            self.yMinText = ""
+            self.yMaxText = ""
+            self.yMinPoint = .zero
+            self.yMaxPoint = .zero
+            self.axisX = axisXLocal
+            self.contentRect = contentRectLocal
+            self.hGridYs = []
+            self.vGridXs = []
+            self.xLabels = []
+            return
         }
 
+        // Mapping helpers using locals (no self capture)
         func x(for date: Date) -> CGFloat {
             let span = max(1, maxTime.timeIntervalSince(minTime))
             let ratio = (date.timeIntervalSince(minTime)) / span
-            return contentRect.minX + CGFloat(ratio) * contentRect.width
+            return contentRectLocal.minX + CGFloat(ratio) * contentRectLocal.width
         }
-
         func yTide(for h: Double) -> CGFloat {
             let ratio = (h - minTide) / tideRange
-            return contentRect.maxY - CGFloat(ratio) * contentRect.height
+            return contentRectLocal.maxY - CGFloat(ratio) * contentRectLocal.height
         }
 
-        func yWave(for h: Double) -> CGFloat {
-            let ratio = (h - minWave) / waveRange
-            return height - CGFloat(ratio) * (height - 8) - 4
-        }
-
-        tidePoints = windowed.map { pair in
+        let tidePointsLocal: [CGPoint] = windowed.map { pair in
             CGPoint(x: x(for: pair.1), y: yTide(for: pair.0.height))
         }
 
         // Current dot
+        var currentTideHeightLocal: Double? = nil
+        var currentTidePointLocal: CGPoint? = nil
         if let nearest = windowed.min(by: { abs($0.1.timeIntervalSince(now)) < abs($1.1.timeIntervalSince(now)) }) {
-            currentTideHeight = nearest.0.height
-            currentTidePoint = CGPoint(x: x(for: nearest.1), y: yTide(for: nearest.0.height))
-        } else {
-            currentTidePoint = nil
-            currentTideHeight = nil
+            currentTideHeightLocal = nearest.0.height
+            currentTidePointLocal = CGPoint(x: x(for: nearest.1), y: yTide(for: nearest.0.height))
         }
 
-        // Extreme labels along X axis
-        let timeLabelFmt = DateFormatter()
-        timeLabelFmt.dateFormat = "HH:mm"
+        // Extreme labels
+        let timeLabelFmt = DateFormatter(); timeLabelFmt.dateFormat = "HH:mm"
+        let prevLabelLocal: String
+        let nextLabelLocal: String
+        let prevLabelPointLocal: CGPoint?
+        let nextLabelPointLocal: CGPoint?
         if let p = prev?.0 {
-            prevLabel = timeLabelFmt.string(from: p)
-            prevLabelPoint = CGPoint(x: x(for: p), y: contentRect.maxY + 10)
+            prevLabelLocal = timeLabelFmt.string(from: p)
+            prevLabelPointLocal = CGPoint(x: x(for: p), y: contentRectLocal.maxY + 10)
         } else {
-            prevLabel = ""
-            prevLabelPoint = nil
+            prevLabelLocal = ""
+            prevLabelPointLocal = nil
         }
         if let n = next?.0 {
-            nextLabel = timeLabelFmt.string(from: n)
-            nextLabelPoint = CGPoint(x: x(for: n), y: contentRect.maxY + 10)
+            nextLabelLocal = timeLabelFmt.string(from: n)
+            nextLabelPointLocal = CGPoint(x: x(for: n), y: contentRectLocal.maxY + 10)
         } else {
-            nextLabel = ""
-            nextLabelPoint = nil
+            nextLabelLocal = ""
+            nextLabelPointLocal = nil
         }
 
-        // Y-axis min/max labels
-        yMaxText = String(format: "%.1fm", maxTide)
-        yMinText = String(format: "%.1fm", minTide)
-        yMaxPoint = CGPoint(x: axisX + 18, y: contentRect.minY)
-        yMinPoint = CGPoint(x: axisX + 18, y: contentRect.maxY)
+        // Y labels and grid
+        let yMaxTextLocal = String(format: "%.1fm", maxTide)
+        let yMinTextLocal = String(format: "%.1fm", minTide)
+        let yMaxPointLocal = CGPoint(x: axisXLocal + 18, y: contentRectLocal.minY)
+        let yMinPointLocal = CGPoint(x: axisXLocal + 18, y: contentRectLocal.maxY)
 
-        // Grid lines: 5 horizontal bands
-        hGridYs = (0...4).map { i in
+        let hGridYsLocal: [CGFloat] = (0...4).map { i in
             let ratio = CGFloat(i) / 4.0
-            return contentRect.maxY - ratio * contentRect.height
+            return contentRectLocal.maxY - ratio * contentRectLocal.height
         }
-        // Vertical grid every 3 hours across window
-        let totalHours = max(1.0, maxTime.timeIntervalSince(minTime) / 3600.0)
-        let stepHours: Double = 3
-        var xs: [CGFloat] = []
+        var vXs: [CGFloat] = []
         var labels: [String] = []
+        let stepHours: Double = 3
         var t = minTime
         let labelFmt = DateFormatter(); labelFmt.dateFormat = "HH"
         while t <= maxTime {
-            xs.append(x(for: t))
+            vXs.append(x(for: t))
             labels.append(labelFmt.string(from: t))
             t = Date(timeInterval: stepHours * 3600, since: t)
         }
-        vGridXs = xs
-        xLabels = labels
+
+        // Assign to properties
+        self.tidePoints = tidePointsLocal
+        self.currentTidePoint = currentTidePointLocal
+        self.currentTideHeight = currentTideHeightLocal
+        self.prevLabel = prevLabelLocal
+        self.nextLabel = nextLabelLocal
+        self.prevLabelPoint = prevLabelPointLocal
+        self.nextLabelPoint = nextLabelPointLocal
+        self.yMinText = yMinTextLocal
+        self.yMaxText = yMaxTextLocal
+        self.yMinPoint = yMinPointLocal
+        self.yMaxPoint = yMaxPointLocal
+        self.axisX = axisXLocal
+        self.contentRect = contentRectLocal
+        self.hGridYs = hGridYsLocal
+        self.vGridXs = vXs
+        self.xLabels = labels
     }
 }
 

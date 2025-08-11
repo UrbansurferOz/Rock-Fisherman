@@ -29,8 +29,10 @@ class WeatherService: ObservableObject {
         // Fetch wave data
         await fetchWaveData(for: location)
         
+        // Merge wave data with forecasts after both are fetched
         await MainActor.run {
-            isLoading = false
+            self.mergeWaveDataWithForecasts()
+            self.isLoading = false
         }
     }
     
@@ -64,7 +66,7 @@ class WeatherService: ObservableObject {
                 self.dailyForecast = weatherResponse.daily.toDailyForecasts()
                 
                 // Merge wave data with forecasts
-                self.mergeWaveDataWithForecasts()
+                // self.mergeWaveDataWithForecasts() // This line is moved to fetchWeather
             }
             
         } catch {

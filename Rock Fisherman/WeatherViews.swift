@@ -421,6 +421,7 @@ struct HourlyForecastRow: View {
                 .frame(width: 25)
         }
         .padding(.vertical, 6)
+        .padding(.horizontal, 12)
         .background(Color(.systemGray6))
         .cornerRadius(6)
     }

@@ -24,6 +24,9 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         guard !preferredRegionCode.isEmpty else { return "" }
         return Locale.current.localizedString(forRegionCode: preferredRegionCode) ?? ""
     }
+    // App primary audience: Australia. Use as strong default/bias.
+    private let primaryCountryCode = "AU"
+    private let primaryCountryName = "Australia"
     
     override init() {
         super.init()
@@ -76,13 +79,32 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
 
         let mkSearch = MKLocalSearch(request: mkRequest)
         mkSearch.start { [weak self] response, error in
+            guard let self else { return }
             if let response = response, !response.mapItems.isEmpty {
-                let placemarks: [CLPlacemark] = response.mapItems.compactMap { $0.placemark }
-                self?.handlePlacemarkResults(from: "MKLocalSearch", query: rawQuery, placemarks: placemarks)
+                var placemarks: [CLPlacemark] = response.mapItems.compactMap { $0.placemark }
+                // If none of the results are in Australia, try an AU-scoped search as a second pass
+                let hasAU = placemarks.contains { $0.isoCountryCode?.uppercased() == self.primaryCountryCode }
+                if !hasAU {
+                    let auReq = MKLocalSearch.Request()
+                    auReq.naturalLanguageQuery = rawQuery
+                    auReq.resultTypes = [.address]
+                    auReq.region = MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751),
+                        span: MKCoordinateSpan(latitudeDelta: 35, longitudeDelta: 35)
+                    )
+                    MKLocalSearch(request: auReq).start { auResp, _ in
+                        if let items = auResp?.mapItems {
+                            placemarks.append(contentsOf: items.compactMap { $0.placemark })
+                        }
+                        self.handlePlacemarkResults(from: "MKLocalSearch+AU", query: rawQuery, placemarks: placemarks)
+                    }
+                } else {
+                    self.handlePlacemarkResults(from: "MKLocalSearch", query: rawQuery, placemarks: placemarks)
+                }
                 return
             }
             // Fallback to CLGeocoder with country scoping
-            self?.performCLGeocoderSearch(rawQuery: rawQuery)
+            self.performCLGeocoderSearch(rawQuery: rawQuery)
         }
     }
 
@@ -99,7 +121,9 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     private func performCLGeocoderSearch(rawQuery: String) {
         // Try scoping to user's country first (e.g., "Clarev, Australia")
-        let countryScopedQuery: String? = preferredCountryName.isEmpty ? nil : "\(rawQuery), \(preferredCountryName)"
+        // Try Australia first (primary audience), then user's country, then raw
+        let auScopedQuery = "\(rawQuery), \(primaryCountryName)"
+        let userScopedQuery: String? = preferredCountryName.isEmpty ? nil : "\(rawQuery), \(preferredCountryName)"
 
         func handleResponse(_ usedQuery: String, placemarks: [CLPlacemark]?, error: Error?) {
             DispatchQueue.main.async {
@@ -123,23 +147,29 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
             }
         }
 
-        if let scoped = countryScopedQuery {
-            print("Searching (scoped): \(scoped)")
-            geocoder.geocodeAddressString(scoped) { [weak self] placemarks, error in
-                // If nothing found with scoped search, fall back to raw
-                if (placemarks?.isEmpty ?? true) {
-                    print("Scoped search returned no results; falling back to raw query: \(rawQuery)")
-                    self?.geocoder.geocodeAddressString(rawQuery) { placemarks2, error2 in
-                        handleResponse(rawQuery, placemarks: placemarks2, error: error2)
-                    }
-                } else {
-                    handleResponse(scoped, placemarks: placemarks, error: error)
-                }
+        print("Searching (scoped AU): \(auScopedQuery)")
+        geocoder.geocodeAddressString(auScopedQuery) { [weak self] auPlacemarks, auError in
+            if let auPlacemarks, !auPlacemarks.isEmpty {
+                handleResponse(auScopedQuery, placemarks: auPlacemarks, error: auError)
+                return
             }
-        } else {
-            print("Searching (raw): \(rawQuery)")
-            geocoder.geocodeAddressString(rawQuery) { placemarks, error in
-                handleResponse(rawQuery, placemarks: placemarks, error: error)
+            if let userScoped = userScopedQuery {
+                print("Searching (scoped user country): \(userScoped)")
+                self?.geocoder.geocodeAddressString(userScoped) { userPlacemarks, userError in
+                    if let userPlacemarks, !userPlacemarks.isEmpty {
+                        handleResponse(userScoped, placemarks: userPlacemarks, error: userError)
+                        return
+                    }
+                    print("Searching (raw): \(rawQuery)")
+                    self?.geocoder.geocodeAddressString(rawQuery) { placemarks, error in
+                        handleResponse(rawQuery, placemarks: placemarks, error: error)
+                    }
+                }
+            } else {
+                print("Searching (raw): \(rawQuery)")
+                self?.geocoder.geocodeAddressString(rawQuery) { placemarks, error in
+                    handleResponse(rawQuery, placemarks: placemarks, error: error)
+                }
             }
         }
     }
@@ -221,15 +251,17 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
             return result
         }
 
-        // Bias to user's country strongly at the end as a tie-breaker
+        // Bias to primary country (AU) first, then user's country
+        let primaryName = primaryCountryName.lowercased()
         let preferredName = preferredCountryName.lowercased()
-        if !preferredName.isEmpty {
-            results.sort { (lhs, rhs) in
-                let lPref = lhs.country.lowercased() == preferredName
-                let rPref = rhs.country.lowercased() == preferredName
-                if lPref != rPref { return lPref && !rPref }
-                return lhs.searchScore > rhs.searchScore
-            }
+        results.sort { (lhs, rhs) in
+            let lPrimary = lhs.country.lowercased() == primaryName
+            let rPrimary = rhs.country.lowercased() == primaryName
+            if lPrimary != rPrimary { return lPrimary && !rPrimary }
+            let lPref = !preferredName.isEmpty && lhs.country.lowercased() == preferredName
+            let rPref = !preferredName.isEmpty && rhs.country.lowercased() == preferredName
+            if lPref != rPref { return lPref && !rPref }
+            return lhs.searchScore > rhs.searchScore
         }
 
         // Sort by score descending within country bias and limit
@@ -256,10 +288,11 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         scoreTotal += Int(Double(score(placemark.administrativeArea)) * 0.6)
         scoreTotal += Int(Double(score(placemark.country)) * 0.2)
 
-        // Strong country bias to user's region
+        // Very strong bias to AU as primary, then user's region
+        if placemark.isoCountryCode?.uppercased() == primaryCountryCode {
+            scoreTotal += 300
+        }
         if let code = placemark.isoCountryCode?.uppercased(), !preferredRegionCode.isEmpty, code == preferredRegionCode {
-            scoreTotal += 200
-        } else if let c = placemark.country?.lowercased(), !preferredCountryName.isEmpty, c == preferredCountryName.lowercased() {
             scoreTotal += 200
         }
 

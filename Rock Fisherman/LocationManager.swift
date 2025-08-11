@@ -15,6 +15,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        // Initialize with the current authorization to avoid stale state
+        if #available(iOS 14.0, *) {
+            self.authorizationStatus = locationManager.authorizationStatus
+        } else {
+            self.authorizationStatus = CLLocationManager.authorizationStatus()
+        }
     }
     
     func requestLocation() {
@@ -72,10 +78,32 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        // Keep for backward compatibility; iOS 14+ will also call locationManagerDidChangeAuthorization
+        handleAuthorizationChange(currentStatus: status)
+    }
+
+    // iOS 14+ preferred callback
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status: CLAuthorizationStatus
+        if #available(iOS 14.0, *) {
+            status = manager.authorizationStatus
+        } else {
+            status = CLLocationManager.authorizationStatus()
+        }
+        handleAuthorizationChange(currentStatus: status)
+    }
+
+    private func handleAuthorizationChange(currentStatus status: CLAuthorizationStatus) {
         DispatchQueue.main.async {
             print("LocationManager: Authorization status changed from \(self.authorizationStatus) to \(status)")
             self.authorizationStatus = status
-            
+
+            guard CLLocationManager.locationServicesEnabled() else {
+                print("LocationManager: Location services disabled")
+                self.isLoading = false
+                return
+            }
+
             // Only request location if we don't already have a manually selected location
             if (status == .authorizedWhenInUse || status == .authorizedAlways) && !self.hasSelectedLocation {
                 print("LocationManager: Requesting location due to authorization change")

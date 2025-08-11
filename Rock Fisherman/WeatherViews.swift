@@ -331,11 +331,12 @@ struct HourlyForecastView: View {
                             print("DEBUG: Fish header - width: 25, alignment: leading")
                         }
                 }
+                .padding(.vertical, 6)
                 .padding(.horizontal, 12)
-                .padding(.bottom, 2)
-                .background(Color.gray.opacity(0.1))
+                .background(Color(.systemGray6))
+                .cornerRadius(6)
                 .onAppear {
-                    print("DEBUG: Header row - horizontal padding: 12, spacing: 12")
+                    print("DEBUG: Header row - vertical padding: 6, horizontal padding: 12, spacing: 12")
                 }
                 
                 // Compact forecast rows with reduced spacing

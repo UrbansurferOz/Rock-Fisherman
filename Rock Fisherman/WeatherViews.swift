@@ -257,39 +257,39 @@ struct HourlyForecastView: View {
                     .foregroundColor(.secondary)
             } else {
                 // Header row
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     Text("Time")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 80, alignment: .leading)
+                        .frame(width: 90, alignment: .leading)
                     
                     Text("")
-                        .frame(width: 30)
+                        .frame(width: 25)
                     
                     Text("Temp")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 50, alignment: .leading)
+                        .frame(width: 45, alignment: .leading)
                     
                     Text("Wind")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 60, alignment: .leading)
+                        .frame(width: 50, alignment: .leading)
                     
                     Text("Rain")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 50, alignment: .leading)
+                        .frame(width: 45, alignment: .leading)
                     
                     Text("Fish")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 30)
+                        .frame(width: 25)
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 4)
@@ -306,7 +306,6 @@ struct HourlyForecastView: View {
     
     private var next12HoursForecast: [HourlyForecast] {
         let now = Date()
-        let calendar = Calendar.current
         
         return weatherService.hourlyForecast
             .filter { forecast in
@@ -329,59 +328,60 @@ struct HourlyForecastRow: View {
     let forecast: HourlyForecast
     
     var body: some View {
-        HStack(spacing: 16) {
-            // Time column
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 12) {
+            // Time column - increased width and better spacing
+            VStack(alignment: .leading, spacing: 4) {
                 Text(forecast.formattedTime)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.primary)
                 
                 Text(forecast.formattedRelativeTime)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 90, alignment: .leading)
             
             // Weather icon
             Image(systemName: weatherIcon(for: forecast.weatherCode))
                 .font(.title3)
                 .foregroundColor(.blue)
-                .frame(width: 30)
+                .frame(width: 25)
             
             // Temperature
             Text("\(Int(round(forecast.temperature)))°")
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .frame(width: 50, alignment: .leading)
+                .frame(width: 45, alignment: .leading)
             
             // Wind
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Image(systemName: "wind")
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundColor(.gray)
                 Text("\(Int(round(forecast.windSpeed)))")
-                    .font(.caption)
-            }
-            .frame(width: 60, alignment: .leading)
-            
-            // Precipitation
-            HStack(spacing: 4) {
-                Image(systemName: "drop.fill")
-                    .font(.caption)
-                    .foregroundColor(.blue)
-                Text("\(Int(round(forecast.precipitation)))")
-                    .font(.caption)
+                    .font(.caption2)
             }
             .frame(width: 50, alignment: .leading)
             
+            // Precipitation
+            HStack(spacing: 3) {
+                Image(systemName: "drop.fill")
+                    .font(.caption2)
+                    .foregroundColor(.blue)
+                Text("\(Int(round(forecast.precipitation)))")
+                    .font(.caption2)
+            }
+            .frame(width: 45, alignment: .leading)
+            
             // Fishing indicator
             Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
-                .font(.caption)
+                .font(.caption2)
                 .foregroundColor(forecast.isGoodFishing ? .green : .gray)
-                .frame(width: 30)
+                .frame(width: 25)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .background(Color(.systemGray6))
         .cornerRadius(8)

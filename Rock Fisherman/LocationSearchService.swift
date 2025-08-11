@@ -73,18 +73,17 @@ class LocationSearchService: ObservableObject {
                 return nil
             }
 
-            // Keep only placemarks where any relevant field contains the query
-            let nameFields: [String] = [
-                placemark.subLocality,
-                placemark.locality,
-                placemark.name,
-                placemark.administrativeArea,
-                placemark.country
-            ].compactMap { $0?.lowercased() }
+            // Prefer places (suburb/city/state) over street-level name matches.
+            let sub = placemark.subLocality?.lowercased() ?? ""
+            let loc = placemark.locality?.lowercased() ?? ""
+            let admin = placemark.administrativeArea?.lowercased() ?? ""
 
-            guard nameFields.contains(where: { $0.contains(queryLower) }) else {
-                return nil
-            }
+            let matchesSub = !sub.isEmpty && (sub.hasPrefix(queryLower) || sub.contains(queryLower))
+            let matchesLoc = !loc.isEmpty && (loc.hasPrefix(queryLower) || loc.contains(queryLower))
+            let matchesAdminPrefix = !admin.isEmpty && admin.hasPrefix(queryLower)
+
+            // Filter out results that only match a street/POI name (e.g., "Curl Rd" in Pomeroy)
+            guard matchesSub || matchesLoc || matchesAdminPrefix else { return nil }
 
             let name = formatLocationName(placemark)
             let country = placemark.country ?? ""
@@ -131,11 +130,12 @@ class LocationSearchService: ObservableObject {
         }
 
         var scoreTotal = 0
-        scoreTotal += score(placemark.subLocality)
-        scoreTotal += score(placemark.locality)
-        scoreTotal += score(placemark.name)
-        scoreTotal += Int(Double(score(placemark.administrativeArea)) * 0.75)
-        scoreTotal += Int(Double(score(placemark.country)) * 0.25)
+        // Strongest signal: suburb/neighbourhood (subLocality) and city (locality)
+        scoreTotal += Int(Double(score(placemark.subLocality)) * 1.5)
+        scoreTotal += Int(Double(score(placemark.locality)) * 1.2)
+        // We deliberately do NOT score placemark.name to avoid roads like "Curl Rd" dominating
+        scoreTotal += Int(Double(score(placemark.administrativeArea)) * 0.6)
+        scoreTotal += Int(Double(score(placemark.country)) * 0.2)
 
         // Bias to Australia
         if placemark.country?.lowercased() == "australia" { scoreTotal += 40 }

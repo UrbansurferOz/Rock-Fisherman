@@ -781,8 +781,7 @@ struct TideChartView: View {
 
                     // Filled area under curve
                     if let line = model.smoothPath {
-                        line
-                            .appending(model.closeToBottomPath(from: line, in: rect))
+                        model.areaPath(from: line, in: rect)
                             .fill(LinearGradient(
                                 stops: [.init(color: .teal.opacity(0.22), location: 0),
                                         .init(color: .teal.opacity(0.04), location: 1)],
@@ -921,14 +920,13 @@ private struct TideChartModel {
         vGrid = v
     }
 
-    /// Create a closed path to bottom to fill under the curve.
-    func closeToBottomPath(from line: Path, in rect: CGRect) -> Path {
-        var p = Path()
+    /// Create a closed area under the line down to the bottom of the rect.
+    func areaPath(from line: Path, in rect: CGRect) -> Path {
+        var p = line
         if let last = line.currentPoint {
-            p.move(to: CGPoint(x: last.x, y: rect.maxY))
+            p.addLine(to: CGPoint(x: last.x, y: rect.maxY))
             p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-            p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-            p.addLine(to: CGPoint(x: last.x, y: rect.minY))
+            p.closeSubpath()
         }
         return p
     }

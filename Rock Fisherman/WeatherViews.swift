@@ -253,10 +253,6 @@ struct HourlyForecastView: View {
                 Text("Next 12 Hours")
                     .font(.headline)
                     .fontWeight(.semibold)
-                
-                Text("Hourly Forecast")
-                    .font(.title3)
-                    .fontWeight(.bold)
             }
             
             if weatherService.isLoading {
@@ -289,55 +285,50 @@ struct HourlyForecastView: View {
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 45, alignment: .center)
-                        .offset(x: -15)
+                        .frame(width: 45, alignment: .leading)
                         .background(Color.green.opacity(0.3))
                         .onAppear {
-                            print("DEBUG: Temp header - width: 45, offset: -15, alignment: center")
+                            print("DEBUG: Temp header - width: 45, alignment: leading")
                         }
                     
                     Text("Wind")
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 50, alignment: .center)
-                        .offset(x: -5)
+                        .frame(width: 50, alignment: .leading)
                         .background(Color.orange.opacity(0.3))
                         .onAppear {
-                            print("DEBUG: Wind header - width: 50, offset: -5, alignment: center")
+                            print("DEBUG: Wind header - width: 50, alignment: leading")
                         }
                     
                     Text("Rain")
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 45, alignment: .center)
-                        .offset(x: -4)
+                        .frame(width: 45, alignment: .leading)
                         .background(Color.purple.opacity(0.3))
                         .onAppear {
-                            print("DEBUG: Rain header - width: 45, offset: -4, alignment: center")
+                            print("DEBUG: Rain header - width: 45, alignment: leading")
                         }
                     
                     Text("Wave")
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 45, alignment: .center)
-                        .offset(x: -3)
+                        .frame(width: 45, alignment: .leading)
                         .background(Color.yellow.opacity(0.3))
                         .onAppear {
-                            print("DEBUG: Wave header - width: 45, offset: -3, alignment: center")
+                            print("DEBUG: Wave header - width: 45, alignment: leading")
                         }
                     
                     Text("Fish")
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 25, alignment: .center)
-                        .offset(x: -3)
+                        .frame(width: 25, alignment: .leading)
                         .background(Color.pink.opacity(0.3))
                         .onAppear {
-                            print("DEBUG: Fish header - width: 25, offset: -3, alignment: center")
+                            print("DEBUG: Fish header - width: 25, alignment: leading")
                         }
                 }
                 .padding(.horizontal, 12)

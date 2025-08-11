@@ -24,17 +24,39 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func requestLocation() {
-        isLoading = true
-        
-        switch authorizationStatus {
-        case .notDetermined:
-            locationManager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways:
-            locationManager.requestLocation()
-        case .denied, .restricted:
-            isLoading = false
-        @unknown default:
-            isLoading = false
+        DispatchQueue.main.async {
+            self.isLoading = true
+
+            guard CLLocationManager.locationServicesEnabled() else {
+                print("LocationManager: Location services are disabled")
+                self.isLoading = false
+                return
+            }
+
+            let status: CLAuthorizationStatus
+            if #available(iOS 14.0, *) {
+                status = self.locationManager.authorizationStatus
+            } else {
+                status = CLLocationManager.authorizationStatus()
+            }
+
+            // Keep our published status in sync with the system value
+            self.authorizationStatus = status
+
+            switch status {
+            case .notDetermined:
+                print("LocationManager: Requesting WhenInUse authorization")
+                self.locationManager.requestWhenInUseAuthorization()
+            case .authorizedWhenInUse, .authorizedAlways:
+                print("LocationManager: Authorized, requesting one-shot location")
+                self.locationManager.requestLocation()
+            case .denied, .restricted:
+                print("LocationManager: Permission denied/restricted")
+                self.isLoading = false
+            @unknown default:
+                print("LocationManager: Unknown authorization status")
+                self.isLoading = false
+            }
         }
     }
     

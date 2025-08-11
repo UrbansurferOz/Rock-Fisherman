@@ -273,9 +273,17 @@ struct HourlyForecastView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .frame(width: 90, alignment: .leading)
+                        .background(Color.red.opacity(0.3))
+                        .onAppear {
+                            print("DEBUG: Time header frame width: 90")
+                        }
                     
                     Text("")
                         .frame(width: 25)
+                        .background(Color.blue.opacity(0.3))
+                        .onAppear {
+                            print("DEBUG: Weather icon column width: 25")
+                        }
                     
                     Text("Temp")
                         .font(.caption2)
@@ -283,6 +291,10 @@ struct HourlyForecastView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 45, alignment: .center)
                         .offset(x: -15)
+                        .background(Color.green.opacity(0.3))
+                        .onAppear {
+                            print("DEBUG: Temp header - width: 45, offset: -15, alignment: center")
+                        }
                     
                     Text("Wind")
                         .font(.caption2)
@@ -290,6 +302,10 @@ struct HourlyForecastView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 50, alignment: .center)
                         .offset(x: -5)
+                        .background(Color.orange.opacity(0.3))
+                        .onAppear {
+                            print("DEBUG: Wind header - width: 50, offset: -5, alignment: center")
+                        }
                     
                     Text("Rain")
                         .font(.caption2)
@@ -297,6 +313,10 @@ struct HourlyForecastView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 45, alignment: .center)
                         .offset(x: -4)
+                        .background(Color.purple.opacity(0.3))
+                        .onAppear {
+                            print("DEBUG: Rain header - width: 45, offset: -4, alignment: center")
+                        }
                     
                     Text("Wave")
                         .font(.caption2)
@@ -304,6 +324,10 @@ struct HourlyForecastView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 45, alignment: .center)
                         .offset(x: -3)
+                        .background(Color.yellow.opacity(0.3))
+                        .onAppear {
+                            print("DEBUG: Wave header - width: 45, offset: -3, alignment: center")
+                        }
                     
                     Text("Fish")
                         .font(.caption2)
@@ -311,9 +335,17 @@ struct HourlyForecastView: View {
                         .foregroundColor(.secondary)
                         .frame(width: 25, alignment: .center)
                         .offset(x: -3)
+                        .background(Color.pink.opacity(0.3))
+                        .onAppear {
+                            print("DEBUG: Fish header - width: 25, offset: -3, alignment: center")
+                        }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)
+                .background(Color.gray.opacity(0.1))
+                .onAppear {
+                    print("DEBUG: Header row - horizontal padding: 12, spacing: 12")
+                }
                 
                 // Compact forecast rows with reduced spacing
                 LazyVStack(spacing: 6) {
@@ -365,18 +397,30 @@ struct HourlyForecastRow: View {
                     .lineLimit(1)
             }
             .frame(width: 90, alignment: .leading)
+            .background(Color.red.opacity(0.2))
+            .onAppear {
+                print("DEBUG: Time data row - width: 90, alignment: leading")
+            }
             
             // Weather icon
             Image(systemName: weatherIcon(for: forecast.weatherCode))
                 .font(.caption)
                 .foregroundColor(.blue)
                 .frame(width: 25)
+                .background(Color.blue.opacity(0.2))
+                .onAppear {
+                    print("DEBUG: Weather icon data - width: 25")
+                }
             
             // Temperature
             Text("\(Int(round(forecast.temperature)))°")
                 .font(.caption)
                 .fontWeight(.medium)
                 .frame(width: 45, alignment: .leading)
+                .background(Color.green.opacity(0.2))
+                .onAppear {
+                    print("DEBUG: Temperature data - width: 45, alignment: leading, value: \(Int(round(forecast.temperature)))°")
+                }
             
             // Wind
             HStack(spacing: 2) {
@@ -429,6 +473,10 @@ struct HourlyForecastRow: View {
         .padding(.horizontal, 12)
         .background(Color(.systemGray6))
         .cornerRadius(6)
+        .onAppear {
+            print("DEBUG: Data row - vertical padding: 6, horizontal padding: 12, spacing: 12")
+            print("DEBUG: Data row total width calculation: 90+25+45+50+45+45+25 = 325 + (12*6) = 397")
+        }
     }
     
     private func weatherIcon(for code: Int) -> String {

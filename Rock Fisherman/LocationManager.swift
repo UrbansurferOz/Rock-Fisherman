@@ -49,7 +49,16 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedWhenInUse, .authorizedAlways:
                 print("LocationManager: Authorized, requesting one-shot location")
-                self.locationManager.requestLocation()
+                // If we already have a recent location (last few minutes), reuse it to speed up UX
+                if let cached = self.locationManager.location, Date().timeIntervalSince(cached.timestamp) < 180 {
+                    print("LocationManager: Using cached location (age < 3 min)")
+                    self.location = cached
+                    self.hasSelectedLocation = true
+                    self.selectedLocationName = "Current Location"
+                    self.isLoading = false
+                } else {
+                    self.locationManager.requestLocation()
+                }
             case .denied, .restricted:
                 print("LocationManager: Permission denied/restricted")
                 self.isLoading = false
@@ -85,9 +94,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         
         DispatchQueue.main.async {
-            self.location = location
-            self.hasSelectedLocation = true
-            self.selectedLocationName = "Current Location"
+            // Prefer high-accuracy/recency, but accept first update quickly to improve perceived speed
+            if self.location == nil || location.horizontalAccuracy <= (self.location?.horizontalAccuracy ?? .greatestFiniteMagnitude) {
+                self.location = location
+                self.hasSelectedLocation = true
+                self.selectedLocationName = "Current Location"
+            }
             self.isLoading = false
         }
     }

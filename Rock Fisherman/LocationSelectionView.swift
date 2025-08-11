@@ -172,16 +172,7 @@ struct LocationSearchView: View {
                         }
                         .padding(.horizontal)
                     }
-                    
-                    if locationSearchService.isSearching {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Searching...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
+
                 }
                 .padding(.vertical)
                 .background(Color(.systemBackground))

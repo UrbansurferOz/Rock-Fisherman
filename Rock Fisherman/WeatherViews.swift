@@ -722,305 +722,252 @@ struct WaveDataCard: View {
     }
 }
 
-// MARK: - Tide Chart View
+// MARK: - Tide Chart View (24h smooth with fill + grid)
 struct TideChartView: View {
     @ObservedObject var weatherService: WeatherService
 
+    private let dateInFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        return f
+    }()
+
+    private let hourFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH"
+        return f
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "water.waves.and.arrow.up")
-                    .foregroundColor(.teal)
+                    .foregroundStyle(.teal)
                 Text("24 Hour Forecast")
                     .font(.headline)
                 Spacer()
             }
 
             GeometryReader { geo in
+                let rect = geo.size.rect.inset(by: .init(top: 10, left: 10, bottom: 26, right: 34))
+                let model = TideChartModel(
+                    samples: weatherService.hourlyTide.compactMap { s in
+                        guard let d = dateInFmt.date(from: s.time) else { return nil }
+                        return (d, s.height)
+                    },
+                    spanHours: 24,
+                    endAtNow: false,
+                    rect: rect
+                )
+
                 ZStack {
-                    let plot = TidePlotData(service: weatherService, width: geo.size.width, height: geo.size.height)
-
-                    // Grid: horizontal and vertical
-                    ForEach(Array(plot.hGridYs.enumerated()), id: \.offset) { _, y in
+                    // Grid (horizontal 5 lines)
+                    ForEach(model.hGrid, id: \.self) { y in
                         Path { p in
-                            p.move(to: CGPoint(x: plot.contentRect.minX, y: y))
-                            p.addLine(to: CGPoint(x: plot.contentRect.maxX, y: y))
+                            p.move(to: CGPoint(x: rect.minX, y: y))
+                            p.addLine(to: CGPoint(x: rect.maxX, y: y))
                         }
-                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                        .stroke(.secondary.opacity(0.15), lineWidth: 1)
                     }
-                    ForEach(Array(plot.vGridXs.enumerated()), id: \.offset) { _, x in
+
+                    // Grid (vertical every 3h)
+                    ForEach(model.vGrid, id: \.x) { tick in
                         Path { p in
-                            p.move(to: CGPoint(x: x, y: plot.contentRect.minY))
-                            p.addLine(to: CGPoint(x: x, y: plot.contentRect.maxY))
+                            p.move(to: CGPoint(x: tick.x, y: rect.minY))
+                            p.addLine(to: CGPoint(x: tick.x, y: rect.maxY))
                         }
-                        .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+                        .stroke(.secondary.opacity(0.1), lineWidth: 1)
                     }
 
-                    // Tide curve (left axis) — smooth solid line
-                    Path { path in
-                        guard let first = plot.tidePoints.first else { return }
-                        path.move(to: first)
-                        for p in plot.tidePoints.dropFirst() { path.addLine(to: p) }
+                    // Filled area under curve
+                    if let line = model.smoothPath {
+                        line
+                            .appending(model.closeToBottomPath(from: line, in: rect))
+                            .fill(LinearGradient(
+                                stops: [.init(color: .teal.opacity(0.22), location: 0),
+                                        .init(color: .teal.opacity(0.04), location: 1)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ))
                     }
-                    .stroke(Color.teal, lineWidth: 2)
 
-                    // Current tide dot
-                    if let dot = plot.currentTidePoint {
-                        Circle().fill(Color.teal)
+                    // Tide line
+                    if let line = model.smoothPath {
+                        line.stroke(.teal, lineWidth: 2)
+                    }
+
+                    // Current point dot
+                    if let dot = model.currentPoint {
+                        Circle()
+                            .fill(Color.teal)
                             .frame(width: 8, height: 8)
                             .position(dot)
                     }
 
-                    // Left axis current value marker aligned with dot
-                    if let current = plot.currentTideHeight, let dot = plot.currentTidePoint {
-                        Path { p in
-                            p.move(to: CGPoint(x: plot.axisX, y: plot.contentRect.minY))
-                            p.addLine(to: CGPoint(x: plot.axisX, y: plot.contentRect.maxY))
-                        }
-                        .stroke(Color.gray.opacity(0.7), lineWidth: 1.2)
-
-                        Text(String(format: "%.1fm", current))
-                            .font(.footnote).bold()
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 4)
-                            .background(.ultraThinMaterial)
-                            .cornerRadius(4)
-                            .position(x: plot.axisX + 18, y: dot.y)
+                    // Right-side min/max labels
+                    VStack {
+                        Text(model.maxLabel).font(.caption2).foregroundStyle(.secondary)
+                        Spacer()
+                        Text(model.minLabel).font(.caption2).foregroundStyle(.secondary)
                     }
+                    .frame(width: 30)
+                    .position(x: rect.maxX + 15, y: rect.midY)
 
-                    // X-axis labels for previous and next extremes
-                    if let prev = plot.prevLabelPoint {
-                        VStack(spacing: 2) {
-                            Circle().fill(Color.teal.opacity(0.8))
-                                .frame(width: 5, height: 5)
-                            Text(plot.prevLabel)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .position(prev)
-                    }
-                    if let next = plot.nextLabelPoint {
-                        VStack(spacing: 2) {
-                            Circle().fill(Color.teal.opacity(0.8))
-                                .frame(width: 5, height: 5)
-                            Text(plot.nextLabel)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .position(next)
-                    }
-
-                    // Y-axis min / max labels
-                    Text(plot.yMaxText)
-                        .font(.caption2).foregroundColor(.secondary)
-                        .position(plot.yMaxPoint)
-                    Text(plot.yMinText)
-                        .font(.caption2).foregroundColor(.secondary)
-                        .position(plot.yMinPoint)
-
-                    // Bottom time labels (every 3h)
-                    ForEach(Array(zip(plot.vGridXs, plot.xLabels)), id: \.0) { x, label in
-                        Text(label)
+                    // Bottom hour labels
+                    ForEach(model.vGrid, id: \.x) { tick in
+                        Text(hourFmt.string(from: tick.date))
                             .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .position(x: x, y: plot.contentRect.maxY + 10)
+                            .foregroundStyle(.secondary)
+                            .position(x: tick.x, y: rect.maxY + 12)
                     }
                 }
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .frame(height: 140)
-            .background(Color(.systemGray6))
-            .cornerRadius(10)
-            .clipped()
+            .frame(height: 160)
         }
-        .padding()
+        .padding(.horizontal)
+        .padding(.top, 2)
     }
 }
 
-private struct TidePlotData {
-    let tidePoints: [CGPoint]
-    let currentTidePoint: CGPoint?
-    let currentTideHeight: Double?
-    let prevLabelPoint: CGPoint?
-    let nextLabelPoint: CGPoint?
-    let prevLabel: String
-    let nextLabel: String
-    let yMinText: String
-    let yMaxText: String
-    let yMinPoint: CGPoint
-    let yMaxPoint: CGPoint
-    var axisX: CGFloat
-    var contentRect: CGRect
-    let hGridYs: [CGFloat]
-    let vGridXs: [CGFloat]
-    let xLabels: [String]
+// MARK: - TideChartModel (layout + mapping)
+private struct TideChartModel {
+    struct VTick: Hashable { let x: CGFloat; let date: Date }
 
-    init(service: WeatherService, width: CGFloat, height: CGFloat) {
-        // Build a window centered on now between previous and next tide extreme
+    let smoothPath: Path?
+    let currentPoint: CGPoint?
+    let minLabel: String
+    let maxLabel: String
+    let hGrid: [CGFloat]
+    let vGrid: [VTick]
+
+    init(samples: [(Date, Double)], spanHours: Int, endAtNow: Bool, rect: CGRect) {
         let now = Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
 
-        // Layout insets for axes/labels (locals)
-        let insetLeft: CGFloat = 40
-        let insetRight: CGFloat = 12
-        let insetTop: CGFloat = 8
-        let insetBottom: CGFloat = 24
-        let contentRectLocal = CGRect(
-            x: insetLeft,
-            y: insetTop,
-            width: max(1, width - insetLeft - insetRight),
-            height: max(1, height - insetTop - insetBottom)
-        )
-        let axisXLocal = contentRectLocal.minX
+        // 1) Choose the 24h window (centered around "now" to look like the screenshot)
+        let start: Date
+        let end: Date
+        if endAtNow {
+            end = now
+            start = Calendar.current.date(byAdding: .hour, value: -spanHours, to: end) ?? now.addingTimeInterval(-86400)
+        } else {
+            start = Calendar.current.date(byAdding: .hour, value: -spanHours/2, to: now) ?? now.addingTimeInterval(-43200)
+            end   = Calendar.current.date(byAdding: .hour, value:  spanHours/2, to: now) ?? now.addingTimeInterval(43200)
+        }
 
-        // Samples
-        let samples = service.hourlyTide
-        if samples.isEmpty {
-            self.tidePoints = []
-            self.currentTidePoint = nil
-            self.currentTideHeight = nil
-            self.prevLabelPoint = nil
-            self.nextLabelPoint = nil
-            self.prevLabel = ""
-            self.nextLabel = ""
-            self.yMinText = ""
-            self.yMaxText = ""
-            self.yMinPoint = .zero
-            self.yMaxPoint = .zero
-            self.axisX = axisXLocal
-            self.contentRect = contentRectLocal
-            self.hGridYs = []
-            self.vGridXs = []
-            self.xLabels = []
+        // 2) Sample/clip to window and ensure chronological order
+        let windowed = samples
+            .filter { $0.0 >= start && $0.0 <= end }
+            .sorted { $0.0 < $1.0 }
+
+        // If we don't have enough points, bail safely
+        guard windowed.count >= 2, rect.width > 1, rect.height > 1 else {
+            smoothPath = nil
+            currentPoint = nil
+            minLabel = ""
+            maxLabel = ""
+            hGrid = []
+            vGrid = []
             return
         }
 
-        // Extremes
-        var extremes: [(Date, Double)] = []
-        for d in service.dailyTideExtremes {
-            for h in d.highs { if let dt = formatter.date(from: String(h.time.prefix(16))) { extremes.append((dt, h.height)) } }
-            for l in d.lows { if let dt = formatter.date(from: String(l.time.prefix(16))) { extremes.append((dt, l.height)) } }
+        // 3) Nice y-range with padding and rounding to 0.1m
+        let rawMin = windowed.map(\.1).min() ?? 0
+        let rawMax = windowed.map(\.1).max() ?? 1
+        let pad: Double = max(0.2, (rawMax - rawMin) * 0.15)
+        let yMin = max(0, floor((rawMin - pad) * 10) / 10)
+        let yMax = ceil((rawMax + pad) * 10) / 10
+        let ySpan = max(0.1, yMax - yMin)
+
+        func xPos(_ d: Date) -> CGFloat {
+            CGFloat(d.timeIntervalSince(start) / end.timeIntervalSince(start)) * rect.width + rect.minX
         }
-        extremes.sort { $0.0 < $1.0 }
-        let prev = extremes.last { $0.0 <= now }
-        let next = extremes.first { $0.0 >= now && $0.0 != prev?.0 }
-
-        let startTime = prev?.0 ?? Calendar.current.date(byAdding: .hour, value: -6, to: now)!
-        let endTime = next?.0 ?? Calendar.current.date(byAdding: .hour, value: 6, to: now)!
-
-        // Windowed samples
-        let windowed: [(TideHeight, Date)] = samples.compactMap { s in
-            guard let dt = formatter.date(from: s.time) else { return nil }
-            guard dt >= startTime && dt <= endTime else { return nil }
-            return (s, dt)
-        }
-        let minTide = floor((windowed.map { $0.0.height }.min() ?? 0) * 10) / 10
-        let maxTide = ceil((windowed.map { $0.0.height }.max() ?? 2) * 10) / 10
-        let tideRange = max(0.1, maxTide - minTide)
-
-        let times: [Date] = windowed.map { $0.1 }
-        guard let minTime = times.min(), let maxTime = times.max(), minTime < maxTime else {
-            self.tidePoints = []
-            self.currentTidePoint = nil
-            self.currentTideHeight = nil
-            self.prevLabelPoint = nil
-            self.nextLabelPoint = nil
-            self.prevLabel = ""
-            self.nextLabel = ""
-            self.yMinText = ""
-            self.yMaxText = ""
-            self.yMinPoint = .zero
-            self.yMaxPoint = .zero
-            self.axisX = axisXLocal
-            self.contentRect = contentRectLocal
-            self.hGridYs = []
-            self.vGridXs = []
-            self.xLabels = []
-            return
+        func yPos(_ h: Double) -> CGFloat {
+            rect.maxY - CGFloat((h - yMin) / ySpan) * rect.height
         }
 
-        // Mapping helpers using locals (no self capture)
-        func x(for date: Date) -> CGFloat {
-            let span = max(1, maxTime.timeIntervalSince(minTime))
-            let ratio = (date.timeIntervalSince(minTime)) / span
-            return contentRectLocal.minX + CGFloat(ratio) * contentRectLocal.width
-        }
-        func yTide(for h: Double) -> CGFloat {
-            let ratio = (h - minTide) / tideRange
-            return contentRectLocal.maxY - CGFloat(ratio) * contentRectLocal.height
-        }
+        // 4) Build points and smooth path (Catmull–Rom to Bezier)
+        let pts: [CGPoint] = windowed.map { CGPoint(x: xPos($0.0), y: yPos($0.1)) }
+        smoothPath = Path.catmullRomSpline(through: pts, alpha: 0.5)
 
-        let tidePointsLocal: [CGPoint] = windowed.map { pair in
-            CGPoint(x: x(for: pair.1), y: yTide(for: pair.0.height))
-        }
-
-        // Current dot
-        var currentTideHeightLocal: Double? = nil
-        var currentTidePointLocal: CGPoint? = nil
-        if let nearest = windowed.min(by: { abs($0.1.timeIntervalSince(now)) < abs($1.1.timeIntervalSince(now)) }) {
-            currentTideHeightLocal = nearest.0.height
-            currentTidePointLocal = CGPoint(x: x(for: nearest.1), y: yTide(for: nearest.0.height))
-        }
-
-        // Extreme labels
-        let timeLabelFmt = DateFormatter(); timeLabelFmt.dateFormat = "HH:mm"
-        let prevLabelLocal: String
-        let nextLabelLocal: String
-        let prevLabelPointLocal: CGPoint?
-        let nextLabelPointLocal: CGPoint?
-        if let p = prev?.0 {
-            prevLabelLocal = timeLabelFmt.string(from: p)
-            prevLabelPointLocal = CGPoint(x: x(for: p), y: contentRectLocal.maxY + 10)
+        // 5) Current closest sample → dot
+        if let nearest = windowed.min(by: { abs($0.0.timeIntervalSince(now)) < abs($1.0.timeIntervalSince(now)) }) {
+            currentPoint = CGPoint(x: xPos(nearest.0), y: yPos(nearest.1))
         } else {
-            prevLabelLocal = ""
-            prevLabelPointLocal = nil
-        }
-        if let n = next?.0 {
-            nextLabelLocal = timeLabelFmt.string(from: n)
-            nextLabelPointLocal = CGPoint(x: x(for: n), y: contentRectLocal.maxY + 10)
-        } else {
-            nextLabelLocal = ""
-            nextLabelPointLocal = nil
+            currentPoint = nil
         }
 
-        // Y labels and grid
-        let yMaxTextLocal = String(format: "%.1fm", maxTide)
-        let yMinTextLocal = String(format: "%.1fm", minTide)
-        let yMaxPointLocal = CGPoint(x: axisXLocal + 18, y: contentRectLocal.minY)
-        let yMinPointLocal = CGPoint(x: axisXLocal + 18, y: contentRectLocal.maxY)
+        // 6) Grid + labels
+        minLabel = String(format: "%.1fm", yMin)
+        maxLabel = String(format: "%.1fm", yMax)
 
-        let hGridYsLocal: [CGFloat] = (0...4).map { i in
-            let ratio = CGFloat(i) / 4.0
-            return contentRectLocal.maxY - ratio * contentRectLocal.height
-        }
-        var vXs: [CGFloat] = []
-        var labels: [String] = []
-        let stepHours: Double = 3
-        var t = minTime
-        let labelFmt = DateFormatter(); labelFmt.dateFormat = "HH"
-        while t <= maxTime {
-            vXs.append(x(for: t))
-            labels.append(labelFmt.string(from: t))
-            t = Date(timeInterval: stepHours * 3600, since: t)
+        hGrid = stride(from: 0, through: 4, by: 1).map { i in
+            rect.maxY - CGFloat(i) / 4 * rect.height
         }
 
-        // Assign to properties
-        self.tidePoints = tidePointsLocal
-        self.currentTidePoint = currentTidePointLocal
-        self.currentTideHeight = currentTideHeightLocal
-        self.prevLabel = prevLabelLocal
-        self.nextLabel = nextLabelLocal
-        self.prevLabelPoint = prevLabelPointLocal
-        self.nextLabelPoint = nextLabelPointLocal
-        self.yMinText = yMinTextLocal
-        self.yMaxText = yMaxTextLocal
-        self.yMinPoint = yMinPointLocal
-        self.yMaxPoint = yMaxPointLocal
-        self.axisX = axisXLocal
-        self.contentRect = contentRectLocal
-        self.hGridYs = hGridYsLocal
-        self.vGridXs = vXs
-        self.xLabels = labels
+        // Vertical ticks every 3 hours, aligned to the previous whole 3-hour mark
+        var v: [VTick] = []
+        let cal = Calendar.current
+        var tick = cal.nextDate(after: start, matching: DateComponents(minute: 0), matchingPolicy: .nextTime, direction: .forward) ?? start
+        let hour = cal.component(.hour, from: tick)
+        let adjust = hour % 3
+        if adjust != 0 { tick = cal.date(byAdding: .hour, value: -adjust, to: tick) ?? tick }
+
+        while tick <= end {
+            v.append(.init(x: xPos(tick), date: tick))
+            tick = cal.date(byAdding: .hour, value: 3, to: tick) ?? end.addingTimeInterval(1)
+        }
+        vGrid = v
+    }
+
+    /// Create a closed path to bottom to fill under the curve.
+    func closeToBottomPath(from line: Path, in rect: CGRect) -> Path {
+        var p = Path()
+        if let last = line.currentPoint {
+            p.move(to: CGPoint(x: last.x, y: rect.maxY))
+            p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+            p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+            p.addLine(to: CGPoint(x: last.x, y: rect.minY))
+        }
+        return p
+    }
+}
+
+// MARK: - Utils
+private extension CGSize { var rect: CGRect { .init(origin: .zero, size: self) } }
+
+// Smooth spline through points (Catmull–Rom → cubic Bézier)
+private extension Path {
+    static func catmullRomSpline(through points: [CGPoint], alpha: CGFloat = 0.5) -> Path {
+        guard points.count > 1 else { return Path() }
+
+        var p = Path()
+        p.move(to: points[0])
+
+        let n = points.count
+        for i in 0 ..< n - 1 {
+            let p0 = i == 0 ? points[i] : points[i - 1]
+            let p1 = points[i]
+            let p2 = points[i + 1]
+            let p3 = (i + 2 < n) ? points[i + 2] : p2
+
+            let d1 = hypot(p1.x - p0.x, p1.y - p0.y)
+            let d2 = hypot(p2.x - p1.x, p2.y - p1.y)
+            let d3 = hypot(p3.x - p2.x, p3.y - p2.y)
+
+            let b1 = d1 > 0 ? (pow(d1, 2 * alpha)) : 0
+            let b2 = d2 > 0 ? (pow(d2, 2 * alpha)) : 0
+            let b3 = d3 > 0 ? (pow(d3, 2 * alpha)) : 0
+
+            let c1x = p1.x + (b1 > 0 ? ( (p2.x - p0.x) * b2 / (b1 + b2) / 2 ) : 0)
+            let c1y = p1.y + (b1 > 0 ? ( (p2.y - p0.y) * b2 / (b1 + b2) / 2 ) : 0)
+            let c2x = p2.x - (b3 > 0 ? ( (p3.x - p1.x) * b2 / (b2 + b3) / 2 ) : 0)
+            let c2y = p2.y - (b3 > 0 ? ( (p3.y - p1.y) * b2 / (b2 + b3) / 2 ) : 0)
+
+            p.addCurve(to: p2, control1: CGPoint(x: c1x, y: c1y), control2: CGPoint(x: c2x, y: c2y))
+        }
+        return p
     }
 }
 

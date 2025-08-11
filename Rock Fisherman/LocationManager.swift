@@ -34,13 +34,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     func setLocation(_ location: CLLocation, name: String? = nil) {
         print("LocationManager.setLocation called with: \(name ?? "unnamed") at (\(location.coordinate.latitude), \(location.coordinate.longitude))")
+        print("LocationManager.setLocation: Previous state - hasSelectedLocation: \(hasSelectedLocation), selectedLocationName: \(selectedLocationName ?? "nil")")
         
         self.location = location
         self.hasSelectedLocation = true
         self.selectedLocationName = name
         self.isLoading = false
         
-        print("LocationManager state updated - hasSelectedLocation: \(hasSelectedLocation), selectedLocationName: \(selectedLocationName ?? "nil")")
+        print("LocationManager.setLocation: New state - hasSelectedLocation: \(hasSelectedLocation), selectedLocationName: \(selectedLocationName ?? "nil")")
+        print("LocationManager.setLocation: Location set successfully")
     }
     
     func clearLocation() {
@@ -71,10 +73,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         DispatchQueue.main.async {
+            print("LocationManager: Authorization status changed from \(self.authorizationStatus) to \(status)")
             self.authorizationStatus = status
             
-            if status == .authorizedWhenInUse || status == .authorizedAlways {
+            // Only request location if we don't already have a manually selected location
+            if (status == .authorizedWhenInUse || status == .authorizedAlways) && !self.hasSelectedLocation {
+                print("LocationManager: Requesting location due to authorization change")
                 self.locationManager.requestLocation()
+            } else {
+                print("LocationManager: Skipping location request (hasSelectedLocation: \(self.hasSelectedLocation))")
             }
         }
     }

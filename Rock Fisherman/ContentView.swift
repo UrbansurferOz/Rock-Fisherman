@@ -12,6 +12,7 @@ struct ContentView: View {
     @StateObject private var weatherService = WeatherService()
     @State private var selectedTab = 0
     @State private var showingLocationSelection = false
+    @State private var hasShownInitialLocationSelection = false
     
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -78,22 +79,35 @@ struct ContentView: View {
             .tag(3)
         }
         .onAppear {
-            // Check if this is the first launch or no location has been selected
-            if !locationManager.hasSelectedLocation && locationManager.authorizationStatus != .notDetermined {
+            // Only show location selection on first launch or if no location has been selected
+            // Don't show it if we already have a location or if we've already shown it
+            if !hasShownInitialLocationSelection && !locationManager.hasSelectedLocation && locationManager.authorizationStatus != .notDetermined && locationManager.location == nil {
+                print("ContentView.onAppear: Showing location selection (first launch)")
                 showingLocationSelection = true
-            } else {
+                hasShownInitialLocationSelection = true
+            } else if let location = locationManager.location {
+                print("ContentView.onAppear: Location already set, requesting weather")
+                Task {
+                    await weatherService.fetchWeather(for: location)
+                }
+            } else if !hasShownInitialLocationSelection {
+                print("ContentView.onAppear: Requesting current location")
                 locationManager.requestLocation()
             }
         }
         .onChange(of: locationManager.hasSelectedLocation) { oldValue, hasSelected in
+            print("ContentView.onChange hasSelectedLocation: \(oldValue) -> \(hasSelected)")
             if hasSelected {
                 // Location has been selected, close the selection view
+                print("ContentView: Closing location selection (hasSelectedLocation changed)")
                 showingLocationSelection = false
             }
         }
         .onChange(of: locationManager.location) { oldLocation, newLocation in
+            print("ContentView.onChange location: \(oldLocation?.coordinate.latitude ?? 0) -> \(newLocation?.coordinate.latitude ?? 0)")
             if let location = newLocation {
                 // When location changes, ensure location selection is closed
+                print("ContentView: Closing location selection (location changed)")
                 showingLocationSelection = false
                 
                 Task {

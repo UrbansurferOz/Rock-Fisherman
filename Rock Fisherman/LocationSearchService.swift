@@ -27,6 +27,10 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
     // App primary audience: Australia. Use as strong default/bias.
     private let primaryCountryCode = "AU"
     private let primaryCountryName = "Australia"
+    private let australiaRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751),
+        span: MKCoordinateSpan(latitudeDelta: 35, longitudeDelta: 35)
+    )
     
     override init() {
         super.init()
@@ -53,9 +57,13 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 guard let self else { return }
                 // Configure completer region for better local suggestions
                 if let c = coordinate {
-                    self.completer.region = MKCoordinateRegion(center: c, span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5))
-                } else if self.preferredRegionCode.uppercased() == "AU" {
-                    self.completer.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751), span: MKCoordinateSpan(latitudeDelta: 35, longitudeDelta: 35))
+                    self.completer.region = MKCoordinateRegion(
+                        center: c,
+                        span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5)
+                    )
+                } else {
+                    // Force AU as default region for this app regardless of simulator locale
+                    self.completer.region = self.australiaRegion
                 }
                 self.lastQuery = searchQuery
                 self.completer.queryFragment = searchQuery
@@ -72,9 +80,13 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         mkRequest.naturalLanguageQuery = rawQuery
         mkRequest.resultTypes = [.address]
         if let c = coordinate {
-            mkRequest.region = MKCoordinateRegion(center: c, span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5))
-        } else if preferredRegionCode.uppercased() == "AU" {
-            mkRequest.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751), span: MKCoordinateSpan(latitudeDelta: 35, longitudeDelta: 35))
+            mkRequest.region = MKCoordinateRegion(
+                center: c,
+                span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5)
+            )
+        } else {
+            // Force AU region as default
+            mkRequest.region = australiaRegion
         }
 
         let mkSearch = MKLocalSearch(request: mkRequest)
@@ -88,10 +100,7 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                     let auReq = MKLocalSearch.Request()
                     auReq.naturalLanguageQuery = rawQuery
                     auReq.resultTypes = [.address]
-                    auReq.region = MKCoordinateRegion(
-                        center: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751),
-                        span: MKCoordinateSpan(latitudeDelta: 35, longitudeDelta: 35)
-                    )
+                    auReq.region = self.australiaRegion
                     MKLocalSearch(request: auReq).start { auResp, _ in
                         if let items = auResp?.mapItems {
                             placemarks.append(contentsOf: items.compactMap { $0.placemark })
@@ -200,11 +209,32 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         }
 
         group.notify(queue: .main) {
-            let results = self.filterAndRankResults(placemarks, for: currentFragment)
-            if !results.isEmpty {
-                self.isSearching = false
-                self.searchResults = results
-                print("Completer resolved to \(results.count) results")
+            var results = self.filterAndRankResults(placemarks, for: currentFragment)
+            // If no AU results from completer-derived searches, run an AU-scoped direct search
+            let hasAU = results.contains { $0.country.caseInsensitiveCompare(self.primaryCountryName) == .orderedSame }
+            if !hasAU {
+                let req = MKLocalSearch.Request()
+                req.naturalLanguageQuery = currentFragment
+                req.resultTypes = [.address]
+                req.region = self.australiaRegion
+                MKLocalSearch(request: req).start { resp, _ in
+                    var merged = placemarks
+                    if let items = resp?.mapItems {
+                        merged.append(contentsOf: items.compactMap { $0.placemark })
+                    }
+                    let finalResults = self.filterAndRankResults(merged, for: currentFragment)
+                    if !finalResults.isEmpty {
+                        self.isSearching = false
+                        self.searchResults = finalResults
+                        print("Completer+AU resolved to \(finalResults.count) results")
+                    }
+                }
+            } else {
+                if !results.isEmpty {
+                    self.isSearching = false
+                    self.searchResults = results
+                    print("Completer resolved to \(results.count) results")
+                }
             }
         }
     }

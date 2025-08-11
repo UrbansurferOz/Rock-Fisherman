@@ -249,87 +249,81 @@ struct HourlyForecastView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Compact header with smaller fonts
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Next 12 Hours")
                     .font(.headline)
                     .fontWeight(.semibold)
-            }
-            
-            if weatherService.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-            } else if weatherService.hourlyForecast.isEmpty {
-                Text("No hourly forecast available")
-                    .foregroundColor(.secondary)
-            } else {
-                // Compact header row with smaller fonts
-                HStack(spacing: 12) {
-                    Text("Time")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .frame(width: 90, alignment: .leading)
-                        .background(Color.red.opacity(0.3))
-                        .onAppear {
-                            print("DEBUG: Time header frame width: 90")
-                        }
-                    
-                    Text("")
-                        .frame(width: 25)
-                        .background(Color.blue.opacity(0.3))
-                        .onAppear {
-                            print("DEBUG: Weather icon column width: 25")
-                        }
-                    
-                    Text("Temp")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .frame(width: 45, alignment: .leading)
-                        .background(Color.green.opacity(0.3))
-                        .onAppear {
-                            print("DEBUG: Temp header - width: 45, alignment: leading")
-                        }
-                    
-                    Text("Wind")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .frame(width: 50, alignment: .leading)
-                        .background(Color.orange.opacity(0.3))
-                        .onAppear {
-                            print("DEBUG: Wind header - width: 50, alignment: leading")
-                        }
-                    
-                    Text("Rain")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .frame(width: 45, alignment: .leading)
-                        .background(Color.purple.opacity(0.3))
-                        .onAppear {
-                            print("DEBUG: Rain header - width: 45, alignment: leading")
-                        }
-                    
-                    Text("Wave")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .frame(width: 45, alignment: .leading)
-                        .background(Color.yellow.opacity(0.3))
-                        .onAppear {
-                            print("DEBUG: Wave header - width: 45, alignment: leading")
-                        }
-                    
-                    Text("Fish")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .frame(width: 25, alignment: .leading)
-                        .background(Color.pink.opacity(0.3))
-                        .onAppear {
-                            print("DEBUG: Fish header - width: 25, alignment: leading")
-                        }
+                
+                // Header row using Grid for perfect alignment
+                Grid(alignment: .leading, horizontalSpacing: 12) {
+                    GridRow {
+                        Text("Time")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .frame(width: 90, alignment: .leading)
+                            .background(Color.red.opacity(0.3))
+                            .onAppear {
+                                print("DEBUG: Time header frame width: 90")
+                            }
+                        
+                        Text("")
+                            .frame(width: 25)
+                            .background(Color.blue.opacity(0.3))
+                            .onAppear {
+                                print("DEBUG: Weather icon column width: 25")
+                            }
+                        
+                        Text("Temp")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .frame(width: 45, alignment: .leading)
+                            .background(Color.green.opacity(0.3))
+                            .onAppear {
+                                print("DEBUG: Temp header - width: 45, alignment: leading")
+                            }
+                        
+                        Text("Wind")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .frame(width: 50, alignment: .leading)
+                            .background(Color.orange.opacity(0.3))
+                            .onAppear {
+                                print("DEBUG: Wind header - width: 50, alignment: leading")
+                            }
+                        
+                        Text("Rain")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .frame(width: 45, alignment: .leading)
+                            .background(Color.purple.opacity(0.3))
+                            .onAppear {
+                                print("DEBUG: Rain header - width: 45, alignment: leading")
+                            }
+                        
+                        Text("Wave")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .frame(width: 45, alignment: .leading)
+                            .background(Color.yellow.opacity(0.3))
+                            .onAppear {
+                                print("DEBUG: Wave header - width: 45, alignment: leading")
+                            }
+                        
+                        Text("Fish")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .frame(width: 25, alignment: .leading)
+                            .background(Color.pink.opacity(0.3))
+                            .onAppear {
+                                print("DEBUG: Fish header - width: 25, alignment: leading")
+                            }
+                    }
                 }
                 .padding(.vertical, 6)
                 .padding(.horizontal, 12)
@@ -375,91 +369,93 @@ struct HourlyForecastRow: View {
     let forecast: HourlyForecast
     
     var body: some View {
-        HStack(spacing: 12) {
-            // Time column - compact layout
-            VStack(alignment: .leading, spacing: 2) {
-                Text(forecast.formattedTime)
+        Grid(alignment: .leading, horizontalSpacing: 12) {
+            GridRow {
+                // Time column - compact layout
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(forecast.formattedTime)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    
+                    Text(forecast.formattedRelativeTime)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(width: 90, alignment: .leading)
+                .background(Color.red.opacity(0.2))
+                .onAppear {
+                    print("DEBUG: Time data row - width: 90, alignment: leading")
+                }
+                
+                // Weather icon
+                Image(systemName: weatherIcon(for: forecast.weatherCode))
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .frame(width: 25)
+                    .background(Color.blue.opacity(0.2))
+                    .onAppear {
+                        print("DEBUG: Weather icon data - width: 25")
+                    }
+                
+                // Temperature
+                Text("\(Int(round(forecast.temperature)))°")
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                
-                Text(forecast.formattedRelativeTime)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(width: 90, alignment: .leading)
-            .background(Color.red.opacity(0.2))
-            .onAppear {
-                print("DEBUG: Time data row - width: 90, alignment: leading")
-            }
-            
-            // Weather icon
-            Image(systemName: weatherIcon(for: forecast.weatherCode))
-                .font(.caption)
-                .foregroundColor(.blue)
-                .frame(width: 25)
-                .background(Color.blue.opacity(0.2))
-                .onAppear {
-                    print("DEBUG: Weather icon data - width: 25")
-                }
-            
-            // Temperature
-            Text("\(Int(round(forecast.temperature)))°")
-                .font(.caption)
-                .fontWeight(.medium)
-                .frame(width: 45, alignment: .leading)
-                .background(Color.green.opacity(0.2))
-                .onAppear {
-                    print("DEBUG: Temperature data - width: 45, alignment: leading, value: \(Int(round(forecast.temperature)))°")
-                }
-            
-            // Wind
-            HStack(spacing: 2) {
-                Image(systemName: "wind")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
-                Text("\(Int(round(forecast.windSpeed)))")
-                    .font(.caption2)
-            }
-            .frame(width: 50, alignment: .leading)
-            
-            // Precipitation
-            HStack(spacing: 2) {
-                Image(systemName: "drop.fill")
-                    .font(.caption2)
-                    .foregroundColor(.blue)
-                Text("\(Int(round(forecast.precipitation)))")
-                    .font(.caption2)
-            }
-            .frame(width: 45, alignment: .leading)
-            
-            // Wave data
-            if let waveHeight = forecast.waveHeight {
-                VStack(spacing: 2) {
-                    Text(String(format: "%.1fm", waveHeight))
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                    
-                    if let waveDirection = forecast.waveDirection {
-                        Text("\(waveDirection)°")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .frame(width: 45, alignment: .leading)
-            } else {
-                Text("N/A")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
                     .frame(width: 45, alignment: .leading)
+                    .background(Color.green.opacity(0.2))
+                    .onAppear {
+                        print("DEBUG: Temperature data - width: 45, alignment: leading, value: \(Int(round(forecast.temperature)))°")
+                    }
+                
+                // Wind
+                HStack(spacing: 2) {
+                    Image(systemName: "wind")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                    Text("\(Int(round(forecast.windSpeed)))")
+                        .font(.caption2)
+                }
+                .frame(width: 50, alignment: .leading)
+                
+                // Precipitation
+                HStack(spacing: 2) {
+                    Image(systemName: "drop.fill")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                    Text("\(Int(round(forecast.precipitation)))")
+                        .font(.caption2)
+                }
+                .frame(width: 45, alignment: .leading)
+                
+                // Wave data
+                if let waveHeight = forecast.waveHeight {
+                    VStack(spacing: 2) {
+                        Text(String(format: "%.1fm", waveHeight))
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                        
+                        if let waveDirection = forecast.waveDirection {
+                            Text("\(waveDirection)°")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .frame(width: 45, alignment: .leading)
+                } else {
+                    Text("N/A")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .frame(width: 45, alignment: .leading)
+                }
+                
+                // Fishing indicator
+                Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
+                    .font(.caption2)
+                    .foregroundColor(forecast.isGoodFishing ? .green : .gray)
+                    .frame(width: 25)
             }
-            
-            // Fishing indicator
-            Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
-                .font(.caption2)
-                .foregroundColor(forecast.isGoodFishing ? .green : .gray)
-                .frame(width: 25)
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 12)

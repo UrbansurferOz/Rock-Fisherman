@@ -9,6 +9,18 @@ class LocationSearchService: ObservableObject {
     
     private let geocoder = CLGeocoder()
     private var searchCancellable: AnyCancellable?
+    // Preferred country derived from device settings to bias and scope results
+    private let preferredRegionCode: String = {
+        if #available(iOS 16.0, *) {
+            return Locale.current.region?.identifier ?? ""
+        } else {
+            return Locale.current.regionCode ?? ""
+        }
+    }()
+    private var preferredCountryName: String {
+        guard !preferredRegionCode.isEmpty else { return "" }
+        return Locale.current.localizedString(forRegionCode: preferredRegionCode) ?? ""
+    }
     
     func searchLocations(query: String) {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -31,34 +43,49 @@ class LocationSearchService: ObservableObject {
     }
     
     private func performSearch(query: String) {
-        // Create a more specific search query
-        let searchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Try scoping to user's country first (e.g., "Clarev, Australia")
+        let countryScopedQuery: String? = preferredCountryName.isEmpty ? nil : "\(rawQuery), \(preferredCountryName)"
 
-        geocoder.geocodeAddressString(searchQuery) { [weak self] placemarks, error in
+        func handleResponse(_ usedQuery: String, placemarks: [CLPlacemark]?, error: Error?) {
             DispatchQueue.main.async {
-                guard let self else { return }
                 self.isSearching = false
-
                 if let error = error {
-                    print("Geocoding error: \(error.localizedDescription)")
+                    print("Geocoding error for query=\(usedQuery): \(error.localizedDescription)")
                     self.searchError = "Location search failed: \(error.localizedDescription)"
                     self.searchResults = []
                     return
                 }
-
-                guard let placemarks = placemarks, !placemarks.isEmpty else {
-                    print("No placemarks returned for query: \(searchQuery)")
+                let returned = placemarks ?? []
+                print("Geocoder returned \(returned.count) placemarks for query=\(usedQuery)")
+                guard !returned.isEmpty else {
                     self.searchResults = []
                     return
                 }
-
-                print("Found \(placemarks.count) placemarks for query: \(searchQuery)")
-
-                // Filter and rank the results for better accuracy
-                let filteredResults = self.filterAndRankResults(placemarks, for: searchQuery)
-
+                let filteredResults = self.filterAndRankResults(returned, for: rawQuery)
                 self.searchResults = filteredResults
-                print("Final filtered results count: \(filteredResults.count)")
+                print("Final filtered count=\(filteredResults.count)")
+                for r in filteredResults { print("Result: \(r.displayName) [score=\(r.searchScore)]") }
+            }
+        }
+
+        if let scoped = countryScopedQuery {
+            print("Searching (scoped): \(scoped)")
+            geocoder.geocodeAddressString(scoped) { [weak self] placemarks, error in
+                // If nothing found with scoped search, fall back to raw
+                if (placemarks?.isEmpty ?? true) {
+                    print("Scoped search returned no results; falling back to raw query: \(rawQuery)")
+                    self?.geocoder.geocodeAddressString(rawQuery) { placemarks2, error2 in
+                        handleResponse(rawQuery, placemarks: placemarks2, error: error2)
+                    }
+                } else {
+                    handleResponse(scoped, placemarks: placemarks, error: error)
+                }
+            }
+        } else {
+            print("Searching (raw): \(rawQuery)")
+            geocoder.geocodeAddressString(rawQuery) { placemarks, error in
+                handleResponse(rawQuery, placemarks: placemarks, error: error)
             }
         }
     }
@@ -73,17 +100,15 @@ class LocationSearchService: ObservableObject {
                 return nil
             }
 
-            // Prefer places (suburb/city/state) over street-level name matches.
-            let sub = placemark.subLocality?.lowercased() ?? ""
-            let loc = placemark.locality?.lowercased() ?? ""
-            let admin = placemark.administrativeArea?.lowercased() ?? ""
-
-            let matchesSub = !sub.isEmpty && (sub.hasPrefix(queryLower) || sub.contains(queryLower))
-            let matchesLoc = !loc.isEmpty && (loc.hasPrefix(queryLower) || loc.contains(queryLower))
-            let matchesAdminPrefix = !admin.isEmpty && admin.hasPrefix(queryLower)
-
-            // Filter out results that only match a street/POI name (e.g., "Curl Rd" in Pomeroy)
-            guard matchesSub || matchesLoc || matchesAdminPrefix else { return nil }
+            // Keep placemark if any relevant field contains the query
+            let fields: [String] = [
+                placemark.subLocality,
+                placemark.locality,
+                placemark.name, // still considered, but scored lower
+                placemark.administrativeArea,
+                placemark.country
+            ].compactMap { $0?.lowercased() }
+            guard fields.contains(where: { $0.contains(queryLower) }) else { return nil }
 
             let name = formatLocationName(placemark)
             let country = placemark.country ?? ""
@@ -107,14 +132,18 @@ class LocationSearchService: ObservableObject {
             return result
         }
 
-        // Prefer Australian results if any exist
-        let australian = results.filter { $0.country.lowercased() == "australia" }
-        if !australian.isEmpty {
-            results = australian + results.filter { $0.country.lowercased() != "australia" }
+        // Bias to user's country strongly at the end as a tie-breaker
+        let preferredName = preferredCountryName.lowercased()
+        if !preferredName.isEmpty {
+            results.sort { (lhs, rhs) in
+                let lPref = lhs.country.lowercased() == preferredName
+                let rPref = rhs.country.lowercased() == preferredName
+                if lPref != rPref { return lPref && !rPref }
+                return lhs.searchScore > rhs.searchScore
+            }
         }
 
-        // Sort by score descending and limit
-        results.sort { $0.searchScore > $1.searchScore }
+        // Sort by score descending within country bias and limit
         return Array(results.prefix(10))
     }
     
@@ -131,14 +160,19 @@ class LocationSearchService: ObservableObject {
 
         var scoreTotal = 0
         // Strongest signal: suburb/neighbourhood (subLocality) and city (locality)
-        scoreTotal += Int(Double(score(placemark.subLocality)) * 1.5)
-        scoreTotal += Int(Double(score(placemark.locality)) * 1.2)
-        // We deliberately do NOT score placemark.name to avoid roads like "Curl Rd" dominating
+        scoreTotal += Int(Double(score(placemark.subLocality)) * 1.6)
+        scoreTotal += Int(Double(score(placemark.locality)) * 1.3)
+        // Include name but with a small weight so "Curl Curl" helps, but roads/POIs don't dominate
+        scoreTotal += Int(Double(score(placemark.name)) * 0.3)
         scoreTotal += Int(Double(score(placemark.administrativeArea)) * 0.6)
         scoreTotal += Int(Double(score(placemark.country)) * 0.2)
 
-        // Bias to Australia
-        if placemark.country?.lowercased() == "australia" { scoreTotal += 40 }
+        // Strong country bias to user's region
+        if let code = placemark.isoCountryCode?.uppercased(), !preferredRegionCode.isEmpty, code == preferredRegionCode {
+            scoreTotal += 200
+        } else if let c = placemark.country?.lowercased(), !preferredCountryName.isEmpty, c == preferredCountryName.lowercased() {
+            scoreTotal += 200
+        }
 
         // Coastal keywords boost
         if let locality = placemark.locality?.lowercased() {

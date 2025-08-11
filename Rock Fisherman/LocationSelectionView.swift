@@ -145,12 +145,12 @@ struct LocationSearchView: View {
                         TextField("Search for a city, town, or area...", text: $searchText)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .onChange(of: searchText) { oldValue, newValue in
-                                locationSearchService.searchLocations(query: newValue)
+                                locationSearchService.searchLocations(query: newValue, near: locationManager.location?.coordinate)
                                 showingSearchResults = !newValue.isEmpty
                             }
                             .onSubmit {
                                 if !searchText.isEmpty {
-                                    locationSearchService.searchLocations(query: searchText)
+                                    locationSearchService.searchLocations(query: searchText, near: locationManager.location?.coordinate)
                                     showingSearchResults = true
                                 }
                             }
@@ -177,7 +177,7 @@ struct LocationSearchView: View {
                                 ForEach(["Sydney", "Melbourne", "Brisbane", "Perth", "Newcastle"], id: \.self) { suggestion in
                                     Button(suggestion) {
                                         searchText = suggestion
-                                        locationSearchService.searchLocations(query: suggestion)
+                                        locationSearchService.searchLocations(query: suggestion, near: locationManager.location?.coordinate)
                                         showingSearchResults = true
                                     }
                                     .font(.caption)

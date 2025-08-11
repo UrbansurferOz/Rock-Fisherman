@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 import Combine
 
 class LocationSearchService: ObservableObject {
@@ -22,7 +23,7 @@ class LocationSearchService: ObservableObject {
         return Locale.current.localizedString(forRegionCode: preferredRegionCode) ?? ""
     }
     
-    func searchLocations(query: String) {
+    func searchLocations(query: String, near coordinate: CLLocationCoordinate2D? = nil) {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             searchResults = []
             return
@@ -38,12 +39,47 @@ class LocationSearchService: ObservableObject {
         searchCancellable = Just(query)
             .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] searchQuery in
-                self?.performSearch(query: searchQuery)
+                self?.performSearch(query: searchQuery, near: coordinate)
             }
     }
     
-    private func performSearch(query: String) {
+    private func performSearch(query: String, near coordinate: CLLocationCoordinate2D?) {
         let rawQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // First try MapKit local search for richer place data with regional bias
+        let mkRequest = MKLocalSearch.Request()
+        mkRequest.naturalLanguageQuery = rawQuery
+        mkRequest.resultTypes = [.address]
+        if let c = coordinate {
+            mkRequest.region = MKCoordinateRegion(center: c, span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5))
+        } else if preferredRegionCode.uppercased() == "AU" {
+            mkRequest.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751), span: MKCoordinateSpan(latitudeDelta: 35, longitudeDelta: 35))
+        }
+
+        let mkSearch = MKLocalSearch(request: mkRequest)
+        mkSearch.start { [weak self] response, error in
+            if let response = response, !response.mapItems.isEmpty {
+                let placemarks: [CLPlacemark] = response.mapItems.compactMap { $0.placemark }
+                self?.handlePlacemarkResults(from: "MKLocalSearch", query: rawQuery, placemarks: placemarks)
+                return
+            }
+            // Fallback to CLGeocoder with country scoping
+            self?.performCLGeocoderSearch(rawQuery: rawQuery)
+        }
+    }
+
+    private func handlePlacemarkResults(from source: String, query: String, placemarks: [CLPlacemark]) {
+        DispatchQueue.main.async {
+            self.isSearching = false
+            print("\(source) returned \(placemarks.count) placemarks for query=\(query)")
+            let filteredResults = self.filterAndRankResults(placemarks, for: query)
+            self.searchResults = filteredResults
+            print("Final filtered count=\(filteredResults.count)")
+            for r in filteredResults { print("Result: \(r.displayName) [score=\(r.searchScore)]") }
+        }
+    }
+
+    private func performCLGeocoderSearch(rawQuery: String) {
         // Try scoping to user's country first (e.g., "Clarev, Australia")
         let countryScopedQuery: String? = preferredCountryName.isEmpty ? nil : "\(rawQuery), \(preferredCountryName)"
 

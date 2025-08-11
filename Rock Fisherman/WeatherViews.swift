@@ -305,7 +305,7 @@ struct HourlyForecastView: View {
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 25)
+                        .frame(width: 25, alignment: .center)
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 2)

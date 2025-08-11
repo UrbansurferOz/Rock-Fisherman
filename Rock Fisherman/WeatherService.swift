@@ -301,9 +301,10 @@ class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
-        // Allow compile-time fallback of API key if not provided in Info.plist
+        // Load from environment first, then Info.plist. No hardcoded fallback to avoid leaking secrets.
+        let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
         let plistKey = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
-        let apiKey = (plistKey?.isEmpty == false ? plistKey! : "cc76fb75-5b9b-4123-9faa-3967265a1847")
+        let apiKey = (envKey?.isEmpty == false ? envKey! : (plistKey?.isEmpty == false ? plistKey! : ""))
         guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
 
         // Fetch hourly heights and extremes for 3 days starting today (UTC is fine; API returns ISO strings with offset)

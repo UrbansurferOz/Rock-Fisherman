@@ -1,0 +1,21 @@
+# Xcode and build artifacts
+DerivedData/
+build/
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+
+# Swift Package Manager
+/.build/
+Package.resolved
+
+# Secrets and local config
+Config.xcconfig
+Secrets.xcconfig
+.env
+.env.*
+
+# Avoid committing local Info.plist with real keys
+Rock Fisherman/Info.plist
+
+

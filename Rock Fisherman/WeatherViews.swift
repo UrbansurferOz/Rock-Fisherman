@@ -748,14 +748,6 @@ struct TideChartView: View {
                     }
                     .stroke(Color.teal, lineWidth: 2)
 
-                    // Wave curve (right axis) — thin solid, no dashes (removes dots)
-                    Path { path in
-                        guard let first = plot.wavePoints.first else { return }
-                        path.move(to: first)
-                        for p in plot.wavePoints.dropFirst() { path.addLine(to: p) }
-                    }
-                    .stroke(Color.blue.opacity(0.6), lineWidth: 1.2)
-
                     // Current tide dot
                     if let dot = plot.currentTidePoint {
                         Circle().fill(Color.teal)
@@ -766,15 +758,40 @@ struct TideChartView: View {
                     // Left axis current value marker aligned with dot
                     if let current = plot.currentTideHeight, let dot = plot.currentTidePoint {
                         Path { p in
-                            p.move(to: CGPoint(x: 8, y: 4))
-                            p.addLine(to: CGPoint(x: 8, y: geo.size.height - 4))
+                            p.move(to: CGPoint(x: 10, y: 4))
+                            p.addLine(to: CGPoint(x: 10, y: geo.size.height - 4))
                         }
-                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                        .stroke(Color.gray.opacity(0.6), lineWidth: 1.2)
 
                         Text(String(format: "%.1fm", current))
-                            .font(.caption)
-                            .foregroundColor(.teal)
-                            .position(x: 28, y: dot.y)
+                            .font(.footnote).bold()
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 4)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(4)
+                            .position(x: 36, y: dot.y)
+                    }
+
+                    // X-axis labels for previous and next extremes
+                    if let prev = plot.prevLabelPoint {
+                        VStack(spacing: 2) {
+                            Circle().fill(Color.teal.opacity(0.8))
+                                .frame(width: 5, height: 5)
+                            Text(plot.prevLabel)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .position(prev)
+                    }
+                    if let next = plot.nextLabelPoint {
+                        VStack(spacing: 2) {
+                            Circle().fill(Color.teal.opacity(0.8))
+                                .frame(width: 5, height: 5)
+                            Text(plot.nextLabel)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .position(next)
                     }
                 }
             }
@@ -789,9 +806,12 @@ struct TideChartView: View {
 
 private struct TidePlotData {
     let tidePoints: [CGPoint]
-    let wavePoints: [CGPoint]
     let currentTidePoint: CGPoint?
     let currentTideHeight: Double?
+    let prevLabelPoint: CGPoint?
+    let nextLabelPoint: CGPoint?
+    let prevLabel: String
+    let nextLabel: String
 
     init(service: WeatherService, width: CGFloat, height: CGFloat) {
         // Build a window centered on now between previous and next tide extreme
@@ -803,7 +823,7 @@ private struct TidePlotData {
         let samples = service.hourlyTide
         // Guard for empty
         guard !samples.isEmpty else {
-            tidePoints = []; wavePoints = []; currentTidePoint = nil; currentTideHeight = nil; return
+            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; return
         }
 
         // Find previous and next extremes
@@ -843,7 +863,7 @@ private struct TidePlotData {
         // X mapping over the window
         let times: [Date] = windowed.map { $0.1 }
         guard let minTime = times.min(), let maxTime = times.max(), minTime < maxTime else {
-            tidePoints = []; wavePoints = []; currentTidePoint = nil; currentTideHeight = nil; return
+            tidePoints = []; currentTidePoint = nil; currentTideHeight = nil; prevLabelPoint = nil; nextLabelPoint = nil; prevLabel = ""; nextLabel = ""; return
         }
 
         func x(for date: Date) -> CGFloat {
@@ -866,13 +886,6 @@ private struct TidePlotData {
             CGPoint(x: x(for: pair.1), y: yTide(for: pair.0.height))
         }
 
-        // Align wave series by hour
-        let waveDict = Dictionary(uniqueKeysWithValues: service.hourlyWaveData.map { ($0.time, $0.waveHeight) })
-        wavePoints = windowed.map { pair in
-            let wh = waveDict[pair.0.time] ?? minWave
-            return CGPoint(x: x(for: pair.1), y: yWave(for: wh))
-        }
-
         // Current dot
         if let nearest = windowed.min(by: { abs($0.1.timeIntervalSince(now)) < abs($1.1.timeIntervalSince(now)) }) {
             currentTideHeight = nearest.0.height
@@ -880,6 +893,24 @@ private struct TidePlotData {
         } else {
             currentTidePoint = nil
             currentTideHeight = nil
+        }
+
+        // Extreme labels along X axis
+        let timeLabelFmt = DateFormatter()
+        timeLabelFmt.dateFormat = "HH:mm"
+        if let p = prev?.0 {
+            prevLabel = timeLabelFmt.string(from: p)
+            prevLabelPoint = CGPoint(x: x(for: p), y: height - 10)
+        } else {
+            prevLabel = ""
+            prevLabelPoint = nil
+        }
+        if let n = next?.0 {
+            nextLabel = timeLabelFmt.string(from: n)
+            nextLabelPoint = CGPoint(x: x(for: n), y: height - 10)
+        } else {
+            nextLabel = ""
+            nextLabelPoint = nil
         }
     }
 }

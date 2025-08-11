@@ -242,248 +242,169 @@ struct FishingConditionsView: View {
     }
 }
 
-// MARK: - Hourly Forecast View
+// MARK: - Hourly Forecast View (aligned)
 struct HourlyForecastView: View {
     @ObservedObject var weatherService: WeatherService
-    
+
+    // Single source of truth for column widths
+    private let colTime: CGFloat = 90
+    private let colIcon: CGFloat = 25
+    private let colTemp: CGFloat = 45
+    private let colWind: CGFloat = 50
+    private let colRain: CGFloat = 45
+    private let colWave: CGFloat = 55   // a touch wider for "0.0m"
+    private let colFish: CGFloat = 25
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Compact header with smaller fonts
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Next 12 Hours")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                
-                // Header row using Grid for perfect alignment
-                Grid(alignment: .leading, horizontalSpacing: 12) {
-                    GridRow {
-                        Text("Time")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .frame(width: 90, alignment: .leading)
-                            .background(Color.red.opacity(0.3))
-                            .onAppear {
-                                print("DEBUG: Time header frame width: 90")
-                            }
-                        
-                        Text("")
-                            .frame(width: 25)
-                            .background(Color.blue.opacity(0.3))
-                            .onAppear {
-                                print("DEBUG: Weather icon column width: 25")
-                            }
-                        
-                        Text("Temp")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .frame(width: 45, alignment: .leading)
-                            .background(Color.green.opacity(0.3))
-                            .onAppear {
-                                print("DEBUG: Temp header - width: 45, alignment: leading")
-                            }
-                        
-                        Text("Wind")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .frame(width: 50, alignment: .leading)
-                            .background(Color.orange.opacity(0.3))
-                            .onAppear {
-                                print("DEBUG: Wind header - width: 50, alignment: leading")
-                            }
-                        
-                        Text("Rain")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .frame(width: 45, alignment: .leading)
-                            .background(Color.purple.opacity(0.3))
-                            .onAppear {
-                                print("DEBUG: Rain header - width: 45, alignment: leading")
-                            }
-                        
-                        Text("Wave")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .frame(width: 45, alignment: .leading)
-                            .background(Color.yellow.opacity(0.3))
-                            .onAppear {
-                                print("DEBUG: Wave header - width: 45, alignment: leading")
-                            }
-                        
-                        Text("Fish")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .frame(width: 25, alignment: .leading)
-                            .background(Color.pink.opacity(0.3))
-                            .onAppear {
-                                print("DEBUG: Fish header - width: 25, alignment: leading")
-                            }
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Next 12 Hours")
+                .font(.headline).fontWeight(.semibold)
+
+            // ONE grid for header + rows ➜ columns align perfectly
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+
+                // Header
+                GridRow {
+                    Text("Time")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                        .frame(width: colTime, alignment: .leading)
+
+                    Text("") // icon column spacer
+                        .frame(width: colIcon)
+
+                    Text("Temp")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                        .frame(width: colTemp, alignment: .leading)
+
+                    Text("Wind")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                        .frame(width: colWind, alignment: .leading)
+
+                    Text("Rain")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                        .frame(width: colRain, alignment: .leading)
+
+                    Text("Wave")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                        .frame(width: colWave, alignment: .leading)
+
+                    Text("Fish")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                        .frame(width: colFish, alignment: .leading)
                 }
                 .padding(.vertical, 6)
                 .padding(.horizontal, 12)
                 .background(Color(.systemGray6))
                 .cornerRadius(6)
-                .onAppear {
-                    print("DEBUG: Header row - vertical padding: 6, horizontal padding: 12, spacing: 12")
-                }
-                
-                // Compact forecast rows with reduced spacing
-                LazyVStack(spacing: 6) {
-                    ForEach(next12HoursForecast, id: \.id) { forecast in
-                        HourlyForecastRow(forecast: forecast)
+
+                // Rows
+                ForEach(next12HoursForecast, id: \.id) { f in
+                    GridRow {
+                        // Time
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(f.formattedTime)
+                                .font(.caption).fontWeight(.medium)
+                            Text(f.formattedRelativeTime)
+                                .font(.caption2).foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(width: colTime, alignment: .leading)
+
+                        // Icon
+                        Image(systemName: weatherIcon(for: f.weatherCode))
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .frame(width: colIcon)
+
+                        // Temp
+                        Text("\(Int(round(f.temperature)))°")
+                            .font(.caption).fontWeight(.medium)
+                            .monospacedDigit()
+                            .frame(width: colTemp, alignment: .leading)
+
+                        // Wind
+                        HStack(spacing: 2) {
+                            Image(systemName: "wind").font(.caption2).foregroundColor(.gray)
+                            Text("\(Int(round(f.windSpeed)))")
+                                .font(.caption2).monospacedDigit()
+                        }
+                        .frame(width: colWind, alignment: .leading)
+
+                        // Rain
+                        HStack(spacing: 2) {
+                            Image(systemName: "drop.fill").font(.caption2).foregroundColor(.blue)
+                            Text("\(Int(round(f.precipitation)))")
+                                .font(.caption2).monospacedDigit()
+                        }
+                        .frame(width: colRain, alignment: .leading)
+
+                        // Wave
+                        if let h = f.waveHeight {
+                            VStack(spacing: 2) {
+                                Text(String(format: "%.1fm", h))
+                                    .font(.caption2).fontWeight(.medium).monospacedDigit()
+                                if let d = f.waveDirection {
+                                    Text("\(d)°")
+                                        .font(.caption2).foregroundColor(.secondary).monospacedDigit()
+                                }
+                            }
+                            .frame(width: colWave, alignment: .leading)
+                        } else {
+                            Text("N/A")
+                                .font(.caption2).foregroundColor(.secondary)
+                                .frame(width: colWave, alignment: .leading)
+                        }
+
+                        // Fish
+                        Image(systemName: f.isGoodFishing ? "fish.fill" : "fish")
+                            .font(.caption2)
+                            .foregroundColor(f.isGoodFishing ? .green : .gray)
+                            .frame(width: colFish)
                     }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(6)
                 }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
-    
+
     private var next12HoursForecast: [HourlyForecast] {
         let now = Date()
-        
         return weatherService.hourlyForecast
-            .filter { forecast in
-                guard let forecastDate = parseForecastTime(forecast.time) else { return false }
-                return forecastDate > now
+            .filter { f in
+                guard let dt = parseForecastTime(f.time) else { return false }
+                return dt > now
             }
             .prefix(12)
             .map { $0 }
     }
-    
+
     private func parseForecastTime(_ timeString: String) -> Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
         return formatter.date(from: timeString)
     }
-}
 
-// MARK: - Hourly Forecast Row
-struct HourlyForecastRow: View {
-    let forecast: HourlyForecast
-    
-    var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 12) {
-            GridRow {
-                // Time column - compact layout
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(forecast.formattedTime)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                    
-                    Text(forecast.formattedRelativeTime)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(width: 90, alignment: .leading)
-                .background(Color.red.opacity(0.2))
-                .onAppear {
-                    print("DEBUG: Time data row - width: 90, alignment: leading")
-                }
-                
-                // Weather icon
-                Image(systemName: weatherIcon(for: forecast.weatherCode))
-                    .font(.caption)
-                    .foregroundColor(.blue)
-                    .frame(width: 25)
-                    .background(Color.blue.opacity(0.2))
-                    .onAppear {
-                        print("DEBUG: Weather icon data - width: 25")
-                    }
-                
-                // Temperature
-                Text("\(Int(round(forecast.temperature)))°")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .frame(width: 45, alignment: .leading)
-                    .background(Color.green.opacity(0.2))
-                    .onAppear {
-                        print("DEBUG: Temperature data - width: 45, alignment: leading, value: \(Int(round(forecast.temperature)))°")
-                    }
-                
-                // Wind
-                HStack(spacing: 2) {
-                    Image(systemName: "wind")
-                        .font(.caption2)
-                        .foregroundColor(.gray)
-                    Text("\(Int(round(forecast.windSpeed)))")
-                        .font(.caption2)
-                }
-                .frame(width: 50, alignment: .leading)
-                
-                // Precipitation
-                HStack(spacing: 2) {
-                    Image(systemName: "drop.fill")
-                        .font(.caption2)
-                        .foregroundColor(.blue)
-                    Text("\(Int(round(forecast.precipitation)))")
-                        .font(.caption2)
-                }
-                .frame(width: 45, alignment: .leading)
-                
-                // Wave data
-                if let waveHeight = forecast.waveHeight {
-                    VStack(spacing: 2) {
-                        Text(String(format: "%.1fm", waveHeight))
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                        
-                        if let waveDirection = forecast.waveDirection {
-                            Text("\(waveDirection)°")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .frame(width: 45, alignment: .leading)
-                } else {
-                    Text("N/A")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .frame(width: 45, alignment: .leading)
-                }
-                
-                // Fishing indicator
-                Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
-                    .font(.caption2)
-                    .foregroundColor(forecast.isGoodFishing ? .green : .gray)
-                    .frame(width: 25)
-            }
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 12)
-        .background(Color(.systemGray6))
-        .cornerRadius(6)
-        .onAppear {
-            print("DEBUG: Data row - vertical padding: 6, horizontal padding: 12, spacing: 12")
-            print("DEBUG: Data row total width calculation: 90+25+45+50+45+45+25 = 325 + (12*6) = 397")
-        }
-    }
-    
     private func weatherIcon(for code: Int) -> String {
         switch code {
         case 0: return "sun.max.fill"
-        case 1, 2, 3: return "cloud.sun.fill"
-        case 45, 48: return "cloud.fog.fill"
-        case 51, 53, 55: return "cloud.drizzle.fill"
-        case 61, 63, 65: return "cloud.rain.fill"
-        case 71, 73, 75: return "cloud.snow.fill"
-        case 77: return "cloud.snow.fill"
-        case 80, 81, 82: return "cloud.heavyrain.fill"
-        case 85, 86: return "cloud.snow.fill"
-        case 95: return "cloud.bolt.rain.fill"
-        case 96, 99: return "cloud.bolt.rain.fill"
+        case 1,2,3: return "cloud.sun.fill"
+        case 45,48: return "cloud.fog.fill"
+        case 51,53,55: return "cloud.drizzle.fill"
+        case 61,63,65: return "cloud.rain.fill"
+        case 71,73,75,77,85,86: return "cloud.snow.fill"
+        case 80,81,82: return "cloud.heavyrain.fill"
+        case 95,96,99: return "cloud.bolt.rain.fill"
         default: return "cloud.fill"
         }
     }
 }
+
+
 
 // MARK: - Daily Forecast View
 struct DailyForecastView: View {

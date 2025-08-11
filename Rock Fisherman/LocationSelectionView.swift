@@ -9,6 +9,7 @@ struct LocationSelectionView: View {
     @State private var showingLocationSearch = false
     @State private var searchText = ""
     @State private var isFirstLaunch = true
+    @State private var showLocationPermissionAlert = false
     
     var body: some View {
         NavigationView {
@@ -46,6 +47,15 @@ struct LocationSelectionView: View {
                         .background(Color.blue)
                         .foregroundColor(.white)
                         .cornerRadius(12)
+                    }
+
+                    if locationManager.isLoading {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Requesting location…")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
                     Button {
@@ -86,10 +96,31 @@ struct LocationSelectionView: View {
         .onDisappear {
             locationSearchService.clearSearch()
         }
+        .alert("Location Permission Needed", isPresented: $showLocationPermissionAlert) {
+            Button("Open Settings") { openSettings() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Please allow location access in Settings to use your current location.")
+        }
     }
     
     private func requestCurrentLocation() {
-        locationManager.requestLocation()
+        switch locationManager.authorizationStatus {
+        case .denied, .restricted:
+            showLocationPermissionAlert = true
+        case .notDetermined:
+            locationManager.requestLocation()
+        case .authorizedWhenInUse, .authorizedAlways:
+            locationManager.requestLocation()
+        @unknown default:
+            locationManager.requestLocation()
+        }
+    }
+
+    private func openSettings() {
+        if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(settingsUrl)
+        }
     }
 }
 

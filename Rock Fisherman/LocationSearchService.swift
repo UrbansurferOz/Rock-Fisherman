@@ -33,31 +33,31 @@ class LocationSearchService: ObservableObject {
     private func performSearch(query: String) {
         // Create a more specific search query
         let searchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // First try to search with more specific parameters
+
         geocoder.geocodeAddressString(searchQuery) { [weak self] placemarks, error in
             DispatchQueue.main.async {
-                self?.isSearching = false
-                
+                guard let self else { return }
+                self.isSearching = false
+
                 if let error = error {
                     print("Geocoding error: \(error.localizedDescription)")
-                    self?.searchError = "Location search failed: \(error.localizedDescription)"
-                    self?.searchResults = []
+                    self.searchError = "Location search failed: \(error.localizedDescription)"
+                    self.searchResults = []
                     return
                 }
-                
-                guard let placemarks = placemarks else {
+
+                guard let placemarks = placemarks, !placemarks.isEmpty else {
                     print("No placemarks returned for query: \(searchQuery)")
-                    self?.searchResults = []
+                    self.searchResults = []
                     return
                 }
-                
+
                 print("Found \(placemarks.count) placemarks for query: \(searchQuery)")
-                
+
                 // Filter and rank the results for better accuracy
-                let filteredResults = self?.filterAndRankResults(placemarks, for: searchQuery) ?? []
-                
-                self?.searchResults = filteredResults
+                let filteredResults = self.filterAndRankResults(placemarks, for: searchQuery)
+
+                self.searchResults = filteredResults
                 print("Final filtered results count: \(filteredResults.count)")
             }
         }
@@ -65,20 +65,35 @@ class LocationSearchService: ObservableObject {
     
     private func filterAndRankResults(_ placemarks: [CLPlacemark], for query: String) -> [LocationResult] {
         let queryLower = query.lowercased()
-        
-        return placemarks.compactMap { placemark in
-            guard let location = placemark.location else { 
+
+        // Build scored results and drop unrelated ones entirely
+        var results: [LocationResult] = placemarks.compactMap { placemark in
+            guard let location = placemark.location else {
                 print("Placemark has no location: \(placemark)")
-                return nil 
+                return nil
             }
-            
+
+            // Keep only placemarks where any relevant field contains the query
+            let nameFields: [String] = [
+                placemark.subLocality,
+                placemark.locality,
+                placemark.name,
+                placemark.administrativeArea,
+                placemark.country
+            ].compactMap { $0?.lowercased() }
+
+            guard nameFields.contains(where: { $0.contains(queryLower) }) else {
+                return nil
+            }
+
             let name = formatLocationName(placemark)
             let country = placemark.country ?? ""
             let state = placemark.administrativeArea ?? ""
             let city = placemark.locality ?? ""
             let subLocality = placemark.subLocality ?? ""
-            
-            // Create result with additional metadata for ranking
+
+            let score = calculateSearchScore(placemark, query: queryLower)
+
             let result = LocationResult(
                 name: name,
                 city: city,
@@ -86,60 +101,52 @@ class LocationSearchService: ObservableObject {
                 country: country,
                 subLocality: subLocality,
                 coordinate: location.coordinate,
-                searchScore: calculateSearchScore(placemark, query: queryLower)
+                searchScore: score
             )
-            
-            print("Created result: \(result.name) at (\(result.coordinate.latitude), \(result.coordinate.longitude)) with score: \(result.searchScore)")
+
+            print("Created result: \(result.name) score=\(result.searchScore)")
             return result
         }
-        .sorted { $0.searchScore > $1.searchScore } // Sort by relevance score
-        .prefix(10) // Limit to top 10 results
-        .map { $0 }
+
+        // Prefer Australian results if any exist
+        let australian = results.filter { $0.country.lowercased() == "australia" }
+        if !australian.isEmpty {
+            results = australian + results.filter { $0.country.lowercased() != "australia" }
+        }
+
+        // Sort by score descending and limit
+        results.sort { $0.searchScore > $1.searchScore }
+        return Array(results.prefix(10))
     }
     
     private func calculateSearchScore(_ placemark: CLPlacemark, query: String) -> Int {
-        var score = 0
-        let queryLower = query.lowercased()
-        
-        // Exact name match gets highest score
-        if let name = placemark.name?.lowercased(), name.contains(queryLower) {
-            score += 100
+        let q = query.lowercased()
+
+        func score(_ text: String?) -> Int {
+            guard let t = text?.lowercased() else { return 0 }
+            var s = 0
+            if t.hasPrefix(q) { s += 120 }
+            if t.contains(q) { s += 60 }
+            return s
         }
-        
-        // Locality (city) match
-        if let locality = placemark.locality?.lowercased(), locality.contains(queryLower) {
-            score += 80
-        }
-        
-        // Sub-locality match (suburb, neighborhood)
-        if let subLocality = placemark.subLocality?.lowercased(), subLocality.contains(queryLower) {
-            score += 70
-        }
-        
-        // Administrative area (state) match
-        if let adminArea = placemark.administrativeArea?.lowercased(), adminArea.contains(queryLower) {
-            score += 50
-        }
-        
-        // Country match
-        if let country = placemark.country?.lowercased(), country.contains(queryLower) {
-            score += 30
-        }
-        
-        // Bonus for Australian locations (assuming this is for Australian fishing)
-        if let country = placemark.country, country.lowercased() == "australia" {
-            score += 20
-        }
-        
-        // Bonus for coastal locations (better for fishing)
-        if let locality = placemark.locality {
+
+        var scoreTotal = 0
+        scoreTotal += score(placemark.subLocality)
+        scoreTotal += score(placemark.locality)
+        scoreTotal += score(placemark.name)
+        scoreTotal += Int(Double(score(placemark.administrativeArea)) * 0.75)
+        scoreTotal += Int(Double(score(placemark.country)) * 0.25)
+
+        // Bias to Australia
+        if placemark.country?.lowercased() == "australia" { scoreTotal += 40 }
+
+        // Coastal keywords boost
+        if let locality = placemark.locality?.lowercased() {
             let coastalKeywords = ["beach", "bay", "harbour", "port", "cove", "creek", "river", "lake"]
-            if coastalKeywords.contains(where: { locality.lowercased().contains($0) }) {
-                score += 15
-            }
+            if coastalKeywords.contains(where: { locality.contains($0) }) { scoreTotal += 15 }
         }
-        
-        return score
+
+        return scoreTotal
     }
     
     private func formatLocationName(_ placemark: CLPlacemark) -> String {

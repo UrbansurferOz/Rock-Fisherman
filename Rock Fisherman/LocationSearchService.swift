@@ -211,6 +211,7 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
     
     private func filterAndRankResults(_ placemarks: [CLPlacemark], for query: String) -> [LocationResult] {
         let queryLower = query.lowercased()
+        let isShortQuery = queryLower.count <= 4 && !queryLower.contains(" ")
 
         // Build scored results and drop unrelated ones entirely
         var results: [LocationResult] = placemarks.compactMap { placemark in
@@ -219,15 +220,29 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 return nil
             }
 
-            // Keep placemark if any relevant field contains the query
-            let fields: [String] = [
-                placemark.subLocality,
-                placemark.locality,
-                placemark.name, // still considered, but scored lower
-                placemark.administrativeArea,
-                placemark.country
-            ].compactMap { $0?.lowercased() }
-            guard fields.contains(where: { $0.contains(queryLower) }) else { return nil }
+            // Matching rules:
+            // - Short queries (<=4 chars, single word): only allow prefix matches on suburb/city
+            // - Longer queries: allow substring matches on suburb/city/state/country; include name for contains but not for short queries
+            if isShortQuery {
+                let sl = placemark.subLocality?.lowercased() ?? ""
+                let loc = placemark.locality?.lowercased() ?? ""
+                let admin = placemark.administrativeArea?.lowercased() ?? ""
+                guard sl.hasPrefix(queryLower) || loc.hasPrefix(queryLower) || admin.hasPrefix(queryLower) else {
+                    return nil
+                }
+            } else {
+                var fields: [String] = [
+                    placemark.subLocality,
+                    placemark.locality,
+                    placemark.administrativeArea,
+                    placemark.country
+                ].compactMap { $0?.lowercased() }
+                // Only include name for longer/compound queries to avoid POIs like "Curl Rd" in unrelated countries
+                if queryLower.count >= 5 || queryLower.contains(" ") {
+                    if let nameLower = placemark.name?.lowercased() { fields.append(nameLower) }
+                }
+                guard fields.contains(where: { $0.contains(queryLower) }) else { return nil }
+            }
 
             let name = formatLocationName(placemark)
             let country = placemark.country ?? ""
@@ -249,6 +264,19 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
 
             print("Created result: \(result.name) score=\(result.searchScore)")
             return result
+        }
+
+        // If any AU results exist, keep only AU
+        let auOnly = results.filter { $0.country.caseInsensitiveCompare(primaryCountryName) == .orderedSame }
+        if !auOnly.isEmpty {
+            print("Pruning to AU-only results: kept=\(auOnly.count), dropped=\(results.count - auOnly.count)")
+            results = auOnly
+        } else if !preferredCountryName.isEmpty {
+            let preferredOnly = results.filter { $0.country.caseInsensitiveCompare(preferredCountryName) == .orderedSame }
+            if !preferredOnly.isEmpty {
+                print("Pruning to preferred-country-only results: kept=\(preferredOnly.count), dropped=\(results.count - preferredOnly.count)")
+                results = preferredOnly
+            }
         }
 
         // Bias to primary country (AU) first, then user's country

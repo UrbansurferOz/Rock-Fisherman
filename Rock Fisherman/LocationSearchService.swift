@@ -12,6 +12,9 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
     private let completer = MKLocalSearchCompleter()
     private var searchCancellable: AnyCancellable?
     private var lastQuery: String = ""
+    // Track and cancel in-flight searches to avoid stale results flashing in
+    private var currentSearchGeneration: Int = 0
+    private var activeMKSearches: [MKLocalSearch] = []
     // Preferred country derived from device settings to bias and scope results
     private let preferredRegionCode: String = {
         if #available(iOS 16.0, *) {
@@ -55,6 +58,11 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
             .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] searchQuery in
                 guard let self else { return }
+                // Bump generation and cancel any prior in-flight work
+                self.currentSearchGeneration += 1
+                let generation = self.currentSearchGeneration
+                self.cancelActiveSearches()
+                self.geocoder.cancelGeocode()
                 // Configure completer region for better local suggestions
                 if let c = coordinate {
                     self.completer.region = MKCoordinateRegion(
@@ -68,11 +76,11 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 self.lastQuery = searchQuery
                 self.completer.queryFragment = searchQuery
                 // Also run our search fallback path
-                self.performSearch(query: searchQuery, near: coordinate)
+                self.performSearch(query: searchQuery, near: coordinate, generation: generation)
             }
     }
     
-    private func performSearch(query: String, near coordinate: CLLocationCoordinate2D?) {
+    private func performSearch(query: String, near coordinate: CLLocationCoordinate2D?, generation: Int) {
         let rawQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // First try MapKit local search for richer place data with regional bias
@@ -90,8 +98,11 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         }
 
         let mkSearch = MKLocalSearch(request: mkRequest)
+        register(search: mkSearch)
         mkSearch.start { [weak self] response, error in
+            defer { self?.unregister(search: mkSearch) }
             guard let self else { return }
+            guard generation == self.currentSearchGeneration, rawQuery == self.lastQuery else { return }
             if let response = response, !response.mapItems.isEmpty {
                 var placemarks: [CLPlacemark] = response.mapItems.compactMap { $0.placemark }
                 // If none of the results are in Australia, try an AU-scoped search as a second pass
@@ -101,7 +112,12 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                     auReq.naturalLanguageQuery = rawQuery
                     auReq.resultTypes = [.address]
                     auReq.region = self.australiaRegion
-                    MKLocalSearch(request: auReq).start { auResp, _ in
+                    let auSearch = MKLocalSearch(request: auReq)
+                    self.register(search: auSearch)
+                    auSearch.start { [weak self] auResp, _ in
+                        guard let self else { return }
+                        defer { self.unregister(search: auSearch) }
+                        guard generation == self.currentSearchGeneration, rawQuery == self.lastQuery else { return }
                         if let items = auResp?.mapItems {
                             placemarks.append(contentsOf: items.compactMap { $0.placemark })
                         }
@@ -112,7 +128,12 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                             auTextReq.naturalLanguageQuery = "\(rawQuery) Australia"
                             auTextReq.resultTypes = [.address]
                             auTextReq.region = self.australiaRegion
-                            MKLocalSearch(request: auTextReq).start { auTextResp, _ in
+                            let auTextSearch = MKLocalSearch(request: auTextReq)
+                            self.register(search: auTextSearch)
+                            auTextSearch.start { [weak self] auTextResp, _ in
+                                guard let self else { return }
+                                defer { self.unregister(search: auTextSearch) }
+                                guard generation == self.currentSearchGeneration, rawQuery == self.lastQuery else { return }
                                 if let items2 = auTextResp?.mapItems {
                                     placemarks.append(contentsOf: items2.compactMap { $0.placemark })
                                 }
@@ -207,6 +228,7 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
     // MARK: - MKLocalSearchCompleterDelegate
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         let currentFragment = completer.queryFragment
+        let generation = currentSearchGeneration
         // Avoid acting on stale results
         guard !currentFragment.isEmpty, currentFragment == lastQuery else { return }
 
@@ -227,7 +249,9 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
             group.enter()
             let req = MKLocalSearch.Request(completion: c)
             let search = MKLocalSearch(request: req)
-            search.start { resp, _ in
+            register(search: search)
+            search.start { [weak self] resp, _ in
+                defer { self?.unregister(search: search) }
                 if let items = resp?.mapItems {
                     placemarks.append(contentsOf: items.compactMap { $0.placemark })
                 }
@@ -236,6 +260,7 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         }
 
         group.notify(queue: .main) {
+            guard generation == self.currentSearchGeneration, currentFragment == self.lastQuery else { return }
             var results = self.filterAndRankResults(placemarks, for: currentFragment)
             // If no AU results from completer-derived searches, run an AU-scoped direct search
             let hasAU = results.contains { $0.country.caseInsensitiveCompare(self.primaryCountryName) == .orderedSame }
@@ -244,7 +269,12 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 req.naturalLanguageQuery = currentFragment
                 req.resultTypes = [.address]
                 req.region = self.australiaRegion
-                MKLocalSearch(request: req).start { resp, _ in
+                let direct = MKLocalSearch(request: req)
+                self.register(search: direct)
+                direct.start { [weak self] resp, _ in
+                    guard let self else { return }
+                    defer { self.unregister(search: direct) }
+                    guard generation == self.currentSearchGeneration, currentFragment == self.lastQuery else { return }
                     var merged = placemarks
                     if let items = resp?.mapItems {
                         merged.append(contentsOf: items.compactMap { $0.placemark })
@@ -264,6 +294,20 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 }
             }
         }
+    }
+
+    // MARK: - Active search management
+    private func register(search: MKLocalSearch) {
+        activeMKSearches.append(search)
+    }
+    private func unregister(search: MKLocalSearch) {
+        if let idx = activeMKSearches.firstIndex(where: { $0 === search }) {
+            activeMKSearches.remove(at: idx)
+        }
+    }
+    private func cancelActiveSearches() {
+        activeMKSearches.forEach { $0.cancel() }
+        activeMKSearches.removeAll()
     }
     
     private func filterAndRankResults(_ placemarks: [CLPlacemark], for query: String) -> [LocationResult] {

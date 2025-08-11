@@ -244,10 +244,17 @@ struct HourlyForecastView: View {
     @ObservedObject var weatherService: WeatherService
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Next 12 Hours")
-                .font(.title2)
-                .fontWeight(.bold)
+        VStack(alignment: .leading, spacing: 12) {
+            // Compact header with smaller fonts
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Next 12 Hours")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Text("Hourly Forecast")
+                    .font(.title3)
+                    .fontWeight(.bold)
+            }
             
             if weatherService.isLoading {
                 ProgressView()
@@ -256,10 +263,10 @@ struct HourlyForecastView: View {
                 Text("No hourly forecast available")
                     .foregroundColor(.secondary)
             } else {
-                // Header row
+                // Compact header row with smaller fonts
                 HStack(spacing: 12) {
                     Text("Time")
-                        .font(.caption)
+                        .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .frame(width: 90, alignment: .leading)
@@ -268,40 +275,42 @@ struct HourlyForecastView: View {
                         .frame(width: 25)
                     
                     Text("Temp")
-                        .font(.caption)
+                        .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .frame(width: 45, alignment: .leading)
                     
                     Text("Wind")
-                        .font(.caption)
+                        .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .frame(width: 50, alignment: .leading)
                     
                     Text("Rain")
-                        .font(.caption)
+                        .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .frame(width: 45, alignment: .leading)
                     
                     Text("Fish")
-                        .font(.caption)
+                        .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .frame(width: 25)
                 }
                 .padding(.horizontal, 12)
-                .padding(.bottom, 4)
+                .padding(.bottom, 2)
                 
-                LazyVStack(spacing: 8) {
+                // Compact forecast rows with reduced spacing
+                LazyVStack(spacing: 6) {
                     ForEach(next12HoursForecast, id: \.id) { forecast in
                         HourlyForecastRow(forecast: forecast)
                     }
                 }
             }
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
     
     private var next12HoursForecast: [HourlyForecast] {
@@ -329,10 +338,10 @@ struct HourlyForecastRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Time column - increased width and better spacing
-            VStack(alignment: .leading, spacing: 4) {
+            // Time column - compact layout
+            VStack(alignment: .leading, spacing: 2) {
                 Text(forecast.formattedTime)
-                    .font(.subheadline)
+                    .font(.caption)
                     .fontWeight(.medium)
                     .foregroundColor(.primary)
                 
@@ -345,18 +354,18 @@ struct HourlyForecastRow: View {
             
             // Weather icon
             Image(systemName: weatherIcon(for: forecast.weatherCode))
-                .font(.title3)
+                .font(.caption)
                 .foregroundColor(.blue)
                 .frame(width: 25)
             
             // Temperature
             Text("\(Int(round(forecast.temperature)))°")
-                .font(.subheadline)
+                .font(.caption)
                 .fontWeight(.medium)
                 .frame(width: 45, alignment: .leading)
             
             // Wind
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {
                 Image(systemName: "wind")
                     .font(.caption2)
                     .foregroundColor(.gray)
@@ -366,7 +375,7 @@ struct HourlyForecastRow: View {
             .frame(width: 50, alignment: .leading)
             
             // Precipitation
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {
                 Image(systemName: "drop.fill")
                     .font(.caption2)
                     .foregroundColor(.blue)
@@ -381,10 +390,10 @@ struct HourlyForecastRow: View {
                 .foregroundColor(forecast.isGoodFishing ? .green : .gray)
                 .frame(width: 25)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
         .padding(.horizontal, 12)
         .background(Color(.systemGray6))
-        .cornerRadius(8)
+        .cornerRadius(6)
     }
     
     private func weatherIcon(for code: Int) -> String {

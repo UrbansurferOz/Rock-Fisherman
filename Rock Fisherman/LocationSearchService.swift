@@ -164,7 +164,12 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
             self.isSearching = false
             print("\(source) returned \(placemarks.count) placemarks for query=\(query)")
             let filteredResults = self.filterAndRankResults(placemarks, for: query)
-            self.searchResults = filteredResults
+            if !filteredResults.isEmpty {
+                self.searchResults = filteredResults
+            } else {
+                // Keep previous non-empty results to avoid flicker/disappearing suggestions
+                print("Filtered results empty for query=\(query); preserving previous results (count=\(self.searchResults.count))")
+            }
             print("Final filtered count=\(filteredResults.count)")
             for r in filteredResults { print("Result: \(r.displayName) [score=\(r.searchScore)]") }
         }
@@ -188,11 +193,15 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 let returned = placemarks ?? []
                 print("Geocoder returned \(returned.count) placemarks for query=\(usedQuery)")
                 guard !returned.isEmpty else {
-                    self.searchResults = []
+                    // Do not clear; preserve existing results to prevent disappearing list while typing
                     return
                 }
                 let filteredResults = self.filterAndRankResults(returned, for: rawQuery)
-                self.searchResults = filteredResults
+                if !filteredResults.isEmpty {
+                    self.searchResults = filteredResults
+                } else {
+                    print("Geocoder filtered to 0; preserving previous results (count=\(self.searchResults.count))")
+                }
                 print("Final filtered count=\(filteredResults.count)")
                 for r in filteredResults { print("Result: \(r.displayName) [score=\(r.searchScore)]") }
             }

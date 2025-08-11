@@ -138,35 +138,14 @@ struct LocationSearchView: View {
         NavigationView {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        
-                         TextField("Search for a city, town, or area...", text: $searchText)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                             .textInputAutocapitalization(.words)
-                             .disableAutocorrection(true)
-                            .onChange(of: searchText) { oldValue, newValue in
-                                locationSearchService.searchLocations(query: newValue, near: locationManager.location?.coordinate)
-                                showingSearchResults = !newValue.isEmpty
-                            }
-                            .onSubmit {
-                                if !searchText.isEmpty {
-                                    locationSearchService.searchLocations(query: searchText, near: locationManager.location?.coordinate)
-                                    showingSearchResults = true
-                                }
-                            }
-                        
-                        if !searchText.isEmpty {
-                            Button("Clear") {
-                                searchText = ""
-                                locationSearchService.clearSearch()
-                                showingSearchResults = false
-                            }
-                            .foregroundColor(.blue)
+                    // Move search field into nav bar via searchable to avoid layout overlapping Cancel on iPhone
+                    if locationSearchService.isSearching {
+                        HStack {
+                            ProgressView().scaleEffect(0.8)
+                            Text("Searching...").font(.caption).foregroundColor(.secondary)
                         }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                     
                     // Search suggestions
                     if searchText.isEmpty && !showingSearchResults {
@@ -330,13 +309,24 @@ struct LocationSearchView: View {
             .navigationTitle("Search Location")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        isPresented = false
-                    }
-                }
+                ToolbarItem(placement: .navigationBarTrailing) { Button("Cancel") { isPresented = false } }
             }
         }
+        // Use native search field anchored in nav bar to prevent overlapping UI on iPhone
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search for a city, town, or area…")
+        .textInputAutocapitalization(.words)
+        .disableAutocorrection(true)
+        .onChange(of: searchText) { _, newValue in
+            showingSearchResults = !newValue.isEmpty
+            locationSearchService.searchLocations(query: newValue, near: locationManager.location?.coordinate)
+        }
+        .onSubmit(of: .search) {
+            if !searchText.isEmpty {
+                locationSearchService.searchLocations(query: searchText, near: locationManager.location?.coordinate)
+                showingSearchResults = true
+            }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
     
     private func selectLocation(_ location: LocationResult) {

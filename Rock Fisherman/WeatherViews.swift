@@ -761,6 +761,18 @@ struct TideChartView: View {
                 )
 
                 ZStack {
+                    // Debug overlay - prints when empty or on first build
+                    if model.smoothPath == nil || model.vGrid.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("TideChart Debug")
+                                .font(.caption).bold()
+                            ForEach(model.debugLines.prefix(8), id: \.self) { line in
+                                Text(line).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                    }
                     // Grid (horizontal 5 lines)
                     ForEach(model.hGrid, id: \.self) { y in
                         Path { p in
@@ -840,8 +852,11 @@ private struct TideChartModel {
     let maxLabel: String
     let hGrid: [CGFloat]
     let vGrid: [VTick]
+    let debugLines: [String]
 
     init(samples: [(Date, Double)], spanHours: Int, endAtNow: Bool, rect: CGRect) {
+        var dbg: [String] = []
+        dbg.append("samples=\(samples.count) rect=(w=\(Int(rect.width)),h=\(Int(rect.height)))")
         let now = Date()
 
         // 1) Choose the 24h window (centered around "now" to look like the screenshot)
@@ -854,6 +869,7 @@ private struct TideChartModel {
             start = Calendar.current.date(byAdding: .hour, value: -spanHours/2, to: now) ?? now.addingTimeInterval(-43200)
             end   = Calendar.current.date(byAdding: .hour, value:  spanHours/2, to: now) ?? now.addingTimeInterval(43200)
         }
+        dbg.append("window=\(start) → \(end)")
 
         // 2) Sample/clip to window and ensure chronological order
         let windowed = samples
@@ -862,12 +878,14 @@ private struct TideChartModel {
 
         // If we don't have enough points, bail safely
         guard windowed.count >= 2, rect.width > 1, rect.height > 1 else {
+            dbg.append("windowed=\(windowed.count) — insufficient points or rect too small")
             smoothPath = nil
             currentPoint = nil
             minLabel = ""
             maxLabel = ""
             hGrid = []
             vGrid = []
+            debugLines = dbg
             return
         }
 
@@ -878,6 +896,7 @@ private struct TideChartModel {
         let yMin = max(0, floor((rawMin - pad) * 10) / 10)
         let yMax = ceil((rawMax + pad) * 10) / 10
         let ySpan = max(0.1, yMax - yMin)
+        dbg.append(String(format: "rawMin=%.2f rawMax=%.2f yMin=%.2f yMax=%.2f ySpan=%.2f", rawMin, rawMax, yMin, yMax, ySpan))
 
         func xPos(_ d: Date) -> CGFloat {
             CGFloat(d.timeIntervalSince(start) / end.timeIntervalSince(start)) * rect.width + rect.minX
@@ -888,11 +907,13 @@ private struct TideChartModel {
 
         // 4) Build points and smooth path (Catmull–Rom to Bezier)
         let pts: [CGPoint] = windowed.map { CGPoint(x: xPos($0.0), y: yPos($0.1)) }
+        dbg.append("points=\(pts.count)")
         smoothPath = Path.catmullRomSpline(through: pts, alpha: 0.5)
 
         // 5) Current closest sample → dot
         if let nearest = windowed.min(by: { abs($0.0.timeIntervalSince(now)) < abs($1.0.timeIntervalSince(now)) }) {
             currentPoint = CGPoint(x: xPos(nearest.0), y: yPos(nearest.1))
+            dbg.append("nearest=\(nearest.0) h=\(String(format: "%.2f", nearest.1))")
         } else {
             currentPoint = nil
         }
@@ -918,6 +939,7 @@ private struct TideChartModel {
             tick = cal.date(byAdding: .hour, value: 3, to: tick) ?? end.addingTimeInterval(1)
         }
         vGrid = v
+        debugLines = dbg
     }
 
     /// Create a closed area under the line down to the bottom of the rect.

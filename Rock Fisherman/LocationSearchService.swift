@@ -3,13 +3,15 @@ import CoreLocation
 import MapKit
 import Combine
 
-class LocationSearchService: ObservableObject {
+class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
     @Published var searchResults: [LocationResult] = []
     @Published var isSearching = false
     @Published var searchError: String?
     
     private let geocoder = CLGeocoder()
+    private let completer = MKLocalSearchCompleter()
     private var searchCancellable: AnyCancellable?
+    private var lastQuery: String = ""
     // Preferred country derived from device settings to bias and scope results
     private let preferredRegionCode: String = {
         if #available(iOS 16.0, *) {
@@ -23,6 +25,12 @@ class LocationSearchService: ObservableObject {
         return Locale.current.localizedString(forRegionCode: preferredRegionCode) ?? ""
     }
     
+    override init() {
+        super.init()
+        completer.delegate = self
+        completer.resultTypes = [.address]
+    }
+
     func searchLocations(query: String, near coordinate: CLLocationCoordinate2D? = nil) {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             searchResults = []
@@ -39,7 +47,17 @@ class LocationSearchService: ObservableObject {
         searchCancellable = Just(query)
             .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] searchQuery in
-                self?.performSearch(query: searchQuery, near: coordinate)
+                guard let self else { return }
+                // Configure completer region for better local suggestions
+                if let c = coordinate {
+                    self.completer.region = MKCoordinateRegion(center: c, span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5))
+                } else if self.preferredRegionCode.uppercased() == "AU" {
+                    self.completer.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751), span: MKCoordinateSpan(latitudeDelta: 35, longitudeDelta: 35))
+                }
+                self.lastQuery = searchQuery
+                self.completer.queryFragment = searchQuery
+                // Also run our search fallback path
+                self.performSearch(query: searchQuery, near: coordinate)
             }
     }
     
@@ -122,6 +140,41 @@ class LocationSearchService: ObservableObject {
             print("Searching (raw): \(rawQuery)")
             geocoder.geocodeAddressString(rawQuery) { placemarks, error in
                 handleResponse(rawQuery, placemarks: placemarks, error: error)
+            }
+        }
+    }
+
+    // MARK: - MKLocalSearchCompleterDelegate
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        let currentFragment = completer.queryFragment
+        // Avoid acting on stale results
+        guard !currentFragment.isEmpty, currentFragment == lastQuery else { return }
+
+        let completions = Array(completer.results.prefix(6))
+        if completions.isEmpty { return }
+
+        print("Completer returned \(completions.count) suggestions for query=\(currentFragment)")
+
+        let group = DispatchGroup()
+        var placemarks: [CLPlacemark] = []
+        for c in completions {
+            group.enter()
+            let req = MKLocalSearch.Request(completion: c)
+            let search = MKLocalSearch(request: req)
+            search.start { resp, _ in
+                if let items = resp?.mapItems {
+                    placemarks.append(contentsOf: items.compactMap { $0.placemark })
+                }
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            let results = self.filterAndRankResults(placemarks, for: currentFragment)
+            if !results.isEmpty {
+                self.isSearching = false
+                self.searchResults = results
+                print("Completer resolved to \(results.count) results")
             }
         }
     }

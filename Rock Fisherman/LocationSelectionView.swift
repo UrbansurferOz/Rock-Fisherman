@@ -142,8 +142,10 @@ struct LocationSearchView: View {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.secondary)
                         
-                        TextField("Search for a city, town, or area...", text: $searchText)
+                         TextField("Search for a city, town, or area...", text: $searchText)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
+                             .textInputAutocapitalization(.words)
+                             .disableAutocorrection(true)
                             .onChange(of: searchText) { oldValue, newValue in
                                 locationSearchService.searchLocations(query: newValue, near: locationManager.location?.coordinate)
                                 showingSearchResults = !newValue.isEmpty

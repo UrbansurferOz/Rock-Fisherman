@@ -176,6 +176,25 @@ struct CurrentWeather: Codable {
         return time
     }
     
+    var formattedRelativeTime: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        guard let forecastDate = formatter.date(from: time) else { return "" }
+        
+        let now = Date()
+        let timeDifference = forecastDate.timeIntervalSince(now)
+        let hours = Int(timeDifference / 3600)
+        let minutes = Int((timeDifference.truncatingRemainder(dividingBy: 3600)) / 60)
+        
+        if hours > 0 {
+            return "in \(hours) hour\(hours == 1 ? "" : "s")"
+        } else if minutes > 0 {
+            return "in \(minutes) min\(minutes == 1 ? "" : "s")"
+        } else {
+            return "now"
+        }
+    }
+    
     var weatherDescription: String {
         switch weatherCode {
         case 0: return "Clear sky"
@@ -233,6 +252,25 @@ struct HourlyForecast: Identifiable, Codable {
             return formatter.string(from: date)
         }
         return time
+    }
+    
+    var formattedRelativeTime: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        guard let forecastDate = formatter.date(from: time) else { return "" }
+        
+        let now = Date()
+        let timeDifference = forecastDate.timeIntervalSince(now)
+        let hours = Int(timeDifference / 3600)
+        let minutes = Int((timeDifference.truncatingRemainder(dividingBy: 3600)) / 60)
+        
+        if hours > 0 {
+            return "in \(hours) hour\(hours == 1 ? "" : "s")"
+        } else if minutes > 0 {
+            return "in \(minutes) min\(minutes == 1 ? "" : "s")"
+        } else {
+            return "now"
+        }
     }
     
     var isGoodFishing: Bool {

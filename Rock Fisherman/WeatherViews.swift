@@ -245,7 +245,7 @@ struct HourlyForecastView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Hourly Forecast")
+            Text("Next 12 Hours")
                 .font(.title2)
                 .fontWeight(.bold)
             
@@ -256,41 +256,135 @@ struct HourlyForecastView: View {
                 Text("No hourly forecast available")
                     .foregroundColor(.secondary)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) {
-                        ForEach(weatherService.hourlyForecast.prefix(24)) { forecast in
-                            VStack(spacing: 8) {
-                                Text(forecast.formattedTime)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Image(systemName: weatherIcon(for: forecast.weatherCode))
-                                    .font(.title2)
-                                    .foregroundColor(.blue)
-                                
-                                Text("\(Int(round(forecast.temperature)))°")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                
-                                Text("\(Int(round(forecast.windSpeed))) km/h")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
-                                    .font(.caption)
-                                    .foregroundColor(forecast.isGoodFishing ? .green : .gray)
-                            }
-                            .frame(width: 80)
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
-                        }
+                // Header row
+                HStack(spacing: 16) {
+                    Text("Time")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(width: 80, alignment: .leading)
+                    
+                    Text("")
+                        .frame(width: 30)
+                    
+                    Text("Temp")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(width: 50, alignment: .leading)
+                    
+                    Text("Wind")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(width: 60, alignment: .leading)
+                    
+                    Text("Rain")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(width: 50, alignment: .leading)
+                    
+                    Text("Fish")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(width: 30)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+                
+                LazyVStack(spacing: 8) {
+                    ForEach(next12HoursForecast, id: \.id) { forecast in
+                        HourlyForecastRow(forecast: forecast)
                     }
-                    .padding(.horizontal)
                 }
             }
         }
         .padding()
+    }
+    
+    private var next12HoursForecast: [HourlyForecast] {
+        let now = Date()
+        let calendar = Calendar.current
+        
+        return weatherService.hourlyForecast
+            .filter { forecast in
+                guard let forecastDate = parseForecastTime(forecast.time) else { return false }
+                return forecastDate > now
+            }
+            .prefix(12)
+            .map { $0 }
+    }
+    
+    private func parseForecastTime(_ timeString: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        return formatter.date(from: timeString)
+    }
+}
+
+// MARK: - Hourly Forecast Row
+struct HourlyForecastRow: View {
+    let forecast: HourlyForecast
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Time column
+            VStack(alignment: .leading, spacing: 2) {
+                Text(forecast.formattedTime)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                
+                Text(forecast.formattedRelativeTime)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(width: 80, alignment: .leading)
+            
+            // Weather icon
+            Image(systemName: weatherIcon(for: forecast.weatherCode))
+                .font(.title3)
+                .foregroundColor(.blue)
+                .frame(width: 30)
+            
+            // Temperature
+            Text("\(Int(round(forecast.temperature)))°")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .frame(width: 50, alignment: .leading)
+            
+            // Wind
+            HStack(spacing: 4) {
+                Image(systemName: "wind")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Text("\(Int(round(forecast.windSpeed)))")
+                    .font(.caption)
+            }
+            .frame(width: 60, alignment: .leading)
+            
+            // Precipitation
+            HStack(spacing: 4) {
+                Image(systemName: "drop.fill")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                Text("\(Int(round(forecast.precipitation)))")
+                    .font(.caption)
+            }
+            .frame(width: 50, alignment: .leading)
+            
+            // Fishing indicator
+            Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
+                .font(.caption)
+                .foregroundColor(forecast.isGoodFishing ? .green : .gray)
+                .frame(width: 30)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color(.systemGray6))
+        .cornerRadius(8)
     }
     
     private func weatherIcon(for code: Int) -> String {

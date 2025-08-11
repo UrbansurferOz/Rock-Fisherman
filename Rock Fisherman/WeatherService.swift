@@ -117,6 +117,10 @@ class WeatherService: ObservableObject {
     // MARK: - Tide
     private func fetchTideData(for location: CLLocation) async {
         let tideService = TideService()
+        // Pre-flight diagnostics: log whether env/plist key is visible to the process
+        let envKeyLen = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]?.count ?? 0
+        let plistKeyLen = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.count ?? 0
+        print("Tide key visibility: envLen=\(envKeyLen) plistLen=\(plistKeyLen)")
         do {
             let (heights, extremes, notice) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
             await MainActor.run {
@@ -127,7 +131,12 @@ class WeatherService: ObservableObject {
         } catch {
             await MainActor.run {
                 if let e = error as? TideServiceError, e == .notAvailable {
-                    print("Tide fetch failed: WORLDTIDES_API_KEY missing. Set in Scheme env or Info.plist.")
+                    // Extra diagnostics: show where we looked for the key
+                    let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
+                    let plistKey = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
+                    let envInfo = envKey == nil ? "nil" : "len=\(envKey!.count)"
+                    let plistInfo = plistKey == nil ? "nil" : "len=\(plistKey!.count)"
+                    print("Tide fetch failed: WORLDTIDES_API_KEY missing. Checked env=\(envInfo), Info.plist=\(plistInfo)")
                     self.nearestWaveLocation = "Tide data unavailable (missing API key). Add WORLDTIDES_API_KEY in Scheme or Info.plist."
                 } else {
                     print("Tide fetch failed: \(error.localizedDescription)")

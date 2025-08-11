@@ -338,29 +338,60 @@ class TideService {
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let today = dateFormatter.string(from: Date())
 
-        var comps = URLComponents(string: "https://www.worldtides.info/api/v3")!
-        comps.queryItems = [
-            URLQueryItem(name: "heights", value: nil),
-            URLQueryItem(name: "extremes", value: nil),
-            URLQueryItem(name: "lat", value: String(latitude)),
-            URLQueryItem(name: "lon", value: String(longitude)),
-            URLQueryItem(name: "date", value: today),
-            URLQueryItem(name: "days", value: "3"),
-            URLQueryItem(name: "key", value: apiKey)
-        ]
-        guard let url = comps.url else { throw TideServiceError.notAvailable }
-
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw TideServiceError.http((response as? HTTPURLResponse)?.statusCode ?? -1)
+        // First try combined heights+extremes
+        func buildURL(includeHeights: Bool, includeExtremes: Bool, days: Int) -> URL? {
+            var c = URLComponents(string: "https://www.worldtides.info/api/v3")!
+            var items: [URLQueryItem] = []
+            if includeHeights { items.append(URLQueryItem(name: "heights", value: nil)) }
+            if includeExtremes { items.append(URLQueryItem(name: "extremes", value: nil)) }
+            items.append(contentsOf: [
+                URLQueryItem(name: "lat", value: String(latitude)),
+                URLQueryItem(name: "lon", value: String(longitude)),
+                URLQueryItem(name: "date", value: today),
+                URLQueryItem(name: "days", value: String(days)),
+                URLQueryItem(name: "localtime", value: "true"),
+                URLQueryItem(name: "key", value: apiKey)
+            ])
+            c.queryItems = items
+            return c.url
         }
 
-        let decoded: WorldTidesCombined
-        do {
-            decoded = try JSONDecoder().decode(WorldTidesCombined.self, from: data)
-        } catch {
-            throw TideServiceError.decode(error.localizedDescription)
+        func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
+            let (d, r) = try await URLSession.shared.data(from: url)
+            guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
+            return (d, http)
         }
+
+        var decoded: WorldTidesCombined? = nil
+        if let url = buildURL(includeHeights: true, includeExtremes: true, days: 3) {
+            let (d, http) = try await request(url)
+            if http.statusCode == 200 {
+                decoded = try? JSONDecoder().decode(WorldTidesCombined.self, from: d)
+            } else {
+                if let body = String(data: d, encoding: .utf8) { print("WorldTides 400 body(combined): \(body)") }
+            }
+        }
+
+        // Fallback: request extremes and heights separately if combined failed
+        if decoded == nil {
+            var extremes: [WorldTideExtreme] = []
+            var heights: [WorldTideHeight] = []
+            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: 3) {
+                let (d1, http1) = try await request(u1)
+                if http1.statusCode == 200 {
+                    if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d1) { extremes = tmp.extremes }
+                } else if let body = String(data: d1, encoding: .utf8) { print("WorldTides 400 body(extremes): \(body)") }
+            }
+            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 3) {
+                let (d2, http2) = try await request(u2)
+                if http2.statusCode == 200 {
+                    if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights }
+                } else if let body = String(data: d2, encoding: .utf8) { print("WorldTides 400 body(heights): \(body)") }
+            }
+            decoded = WorldTidesCombined(heights: heights, extremes: extremes, copyright: nil)
+        }
+
+        guard let decoded = decoded else { throw TideServiceError.notAvailable }
 
         // Map heights → TideHeight with local normalized format
         let outHeights: [TideHeight] = decoded.heights.map { h in

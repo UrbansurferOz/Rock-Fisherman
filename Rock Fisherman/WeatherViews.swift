@@ -761,6 +761,19 @@ struct TideChartView: View {
                 )
 
                 ZStack {
+                    if weatherService.hourlyTide.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("No tide samples loaded")
+                                .font(.caption).bold()
+                            if let note = weatherService.nearestWaveLocation {
+                                Text(note).font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Text("Tip: ensure WORLDTIDES_API_KEY is set (Scheme → Run → Environment or Info.plist)")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                    }
                     // Debug overlay - prints when empty or on first build
                     if model.smoothPath == nil || model.vGrid.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {

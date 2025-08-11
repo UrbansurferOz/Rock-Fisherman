@@ -126,7 +126,12 @@ class WeatherService: ObservableObject {
             }
         } catch {
             await MainActor.run {
-                print("Tide fetch failed: \(error.localizedDescription)")
+                if let e = error as? TideServiceError, e == .notAvailable {
+                    print("Tide fetch failed: WORLDTIDES_API_KEY missing. Set in Scheme env or Info.plist.")
+                    self.nearestWaveLocation = "Tide data unavailable (missing API key). Add WORLDTIDES_API_KEY in Scheme or Info.plist."
+                } else {
+                    print("Tide fetch failed: \(error.localizedDescription)")
+                }
                 self.hourlyTide = []
                 self.dailyTideExtremes = []
                 self.tideCopyright = nil

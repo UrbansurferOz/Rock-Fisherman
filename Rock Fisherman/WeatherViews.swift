@@ -246,14 +246,14 @@ struct FishingConditionsView: View {
 struct HourlyForecastView: View {
     @ObservedObject var weatherService: WeatherService
 
-    // Single source of truth for column widths
-    private let colTime: CGFloat = 90
-    private let colIcon: CGFloat = 25
-    private let colTemp: CGFloat = 45
-    private let colWind: CGFloat = 50
-    private let colRain: CGFloat = 45
-    private let colWave: CGFloat = 55   // a touch wider for "0.0m"
-    private let colFish: CGFloat = 25
+    // Single source of truth for column widths (reduced to fit iPhone screens)
+    private let colTime: CGFloat = 70
+    private let colIcon: CGFloat = 20
+    private let colTemp: CGFloat = 35
+    private let colWind: CGFloat = 40
+    private let colRain: CGFloat = 35
+    private let colWave: CGFloat = 45   // a touch wider for "0.0m"
+    private let colFish: CGFloat = 20
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -261,7 +261,7 @@ struct HourlyForecastView: View {
                 .font(.headline).fontWeight(.semibold)
 
             // ONE grid for header + rows ➜ columns align perfectly
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
 
                 // Header
                 GridRow {
@@ -293,7 +293,7 @@ struct HourlyForecastView: View {
                         .frame(width: colFish, alignment: .leading)
                 }
                 .padding(.vertical, 6)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 8)
                 .background(Color(.systemGray6))
                 .cornerRadius(6)
 
@@ -362,13 +362,13 @@ struct HourlyForecastView: View {
                             .frame(width: colFish)
                     }
                     .padding(.vertical, 6)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 8)
                     .background(Color(.systemGray6))
                     .cornerRadius(6)
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.vertical, 12)
     }
 

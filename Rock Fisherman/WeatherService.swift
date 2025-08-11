@@ -130,14 +130,22 @@ class WeatherService: ObservableObject {
             }
         } catch {
             await MainActor.run {
-                if let e = error as? TideServiceError, e == .notAvailable {
-                    // Extra diagnostics: show where we looked for the key
-                    let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
-                    let plistKey = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
-                    let envInfo = envKey == nil ? "nil" : "len=\(envKey!.count)"
-                    let plistInfo = plistKey == nil ? "nil" : "len=\(plistKey!.count)"
-                    print("Tide fetch failed: WORLDTIDES_API_KEY missing. Checked env=\(envInfo), Info.plist=\(plistInfo)")
-                    self.nearestWaveLocation = "Tide data unavailable (missing API key). Add WORLDTIDES_API_KEY in Scheme or Info.plist."
+                if let e = error as? TideServiceError {
+                    switch e {
+                    case .notAvailable:
+                        let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let plistKey = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let envInfo = envKey == nil ? "nil" : "len=\(envKey!.count)"
+                        let plistInfo = plistKey == nil ? "nil" : "len=\(plistKey!.count)"
+                        print("Tide fetch failed: key missing after trim. env=\(envInfo) plist=\(plistInfo)")
+                        self.nearestWaveLocation = "Tide data unavailable (missing API key). Add WORLDTIDES_API_KEY in Scheme or Info.plist."
+                    case .http(let code):
+                        print("Tide fetch HTTP error: \(code)")
+                        self.nearestWaveLocation = "Tide service HTTP \(code)"
+                    case .decode(let msg):
+                        print("Tide decode error: \(msg)")
+                        self.nearestWaveLocation = "Tide data format error"
+                    }
                 } else {
                     print("Tide fetch failed: \(error.localizedDescription)")
                 }
@@ -309,15 +317,19 @@ struct DailyTide: Identifiable, Codable {
     }
 }
 
-enum TideServiceError: Error { case notAvailable }
+enum TideServiceError: Error {
+    case notAvailable
+    case http(Int)
+    case decode(String)
+}
 
 class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
-        // Load from environment first, then Info.plist. No hardcoded fallback to avoid leaking secrets.
-        let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
-        let plistKey = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
+        // Load from environment first, then Info.plist. Trim whitespace.
+        let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let plistKey = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = (envKey?.isEmpty == false ? envKey! : (plistKey?.isEmpty == false ? plistKey! : ""))
         guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
 
@@ -340,10 +352,15 @@ class TideService {
 
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw TideServiceError.notAvailable
+            throw TideServiceError.http((response as? HTTPURLResponse)?.statusCode ?? -1)
         }
 
-        let decoded = try JSONDecoder().decode(WorldTidesCombined.self, from: data)
+        let decoded: WorldTidesCombined
+        do {
+            decoded = try JSONDecoder().decode(WorldTidesCombined.self, from: data)
+        } catch {
+            throw TideServiceError.decode(error.localizedDescription)
+        }
 
         // Map heights → TideHeight with local normalized format
         let outHeights: [TideHeight] = decoded.heights.map { h in

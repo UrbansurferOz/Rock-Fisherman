@@ -59,6 +59,9 @@ struct CurrentWeatherView: View {
                             )
                         }
                         
+                        // Wave Information
+                        WaveInfoView(weatherService: weatherService)
+                        
                         // Fishing Conditions
                         FishingConditionsView(currentWeather: currentWeather)
                     }
@@ -552,5 +555,134 @@ struct FishingTipCard: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
+    }
+}
+
+// MARK: - Wave Info View
+struct WaveInfoView: View {
+    @ObservedObject var weatherService: WeatherService
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "water.waves")
+                    .font(.title2)
+                    .foregroundColor(.blue)
+                
+                Text("Wave Conditions")
+                    .font(.title2)
+                    .fontWeight(.bold)
+            }
+            
+            if weatherService.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+            } else if let waveData = weatherService.waveData {
+                // Wave data available
+                VStack(spacing: 16) {
+                    // Current wave conditions
+                    HStack(spacing: 20) {
+                        WaveDataCard(
+                            title: "Height",
+                            value: waveData.waveHeightFormatted,
+                            icon: "arrow.up.and.down",
+                            color: .blue
+                        )
+                        
+                        WaveDataCard(
+                            title: "Direction",
+                            value: waveData.waveDirectionFormatted,
+                            icon: "location.north",
+                            color: .green
+                        )
+                        
+                        WaveDataCard(
+                            title: "Period",
+                            value: waveData.wavePeriodFormatted,
+                            icon: "clock",
+                            color: .orange
+                        )
+                    }
+                    
+                    // Fishing condition indicator
+                    HStack {
+                        Text("Fishing Condition:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(waveData.fishingConditionColor)
+                                .frame(width: 12, height: 12)
+                            
+                            Text(waveData.fishingCondition)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(waveData.fishingConditionColor)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                }
+            } else {
+                // No wave data available
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundColor(.orange)
+                        
+                        Text("Wave data not available")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if let nearestLocation = weatherService.nearestWaveLocation {
+                        Text(nearestLocation)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Wave Data Card
+struct WaveDataCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(.primary)
+            
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color(.systemGray6))
+        .cornerRadius(8)
     }
 }

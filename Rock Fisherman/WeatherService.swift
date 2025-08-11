@@ -1,15 +1,19 @@
 import Foundation
 import CoreLocation
+import SwiftUI
 
 // MARK: - Weather Service
 class WeatherService: ObservableObject {
     @Published var currentWeather: CurrentWeather?
     @Published var hourlyForecast: [HourlyForecast] = []
     @Published var dailyForecast: [DailyForecast] = []
+    @Published var waveData: WaveData?
+    @Published var nearestWaveLocation: String?
     @Published var isLoading = false
     @Published var errorMessage: String?
     
     private let baseURL = "https://api.open-meteo.com/v1"
+    private let marineBaseURL = "https://marine-api.open-meteo.com/v1"
     
     func fetchWeather(for location: CLLocation) async {
         await MainActor.run {
@@ -17,51 +21,128 @@ class WeatherService: ObservableObject {
             errorMessage = nil
         }
         
+        // Fetch weather data
+        await fetchWeatherData(for: location)
+        
+        // Fetch wave data
+        await fetchWaveData(for: location)
+        
+        await MainActor.run {
+            isLoading = false
+        }
+    }
+    
+    private func fetchWeatherData(for location: CLLocation) async {
         let urlString = "\(baseURL)/forecast?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,weather_code&timezone=auto"
         
         guard let url = URL(string: urlString) else {
             await MainActor.run {
                 errorMessage = "Invalid URL"
-                isLoading = false
             }
             return
         }
         
         do {
-            print("Fetching weather from: \(urlString)")
             let (data, response) = try await URLSession.shared.data(from: url)
             
-            // Log response details for debugging
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Weather API response status: \(httpResponse.statusCode)")
-                print("Response headers: \(httpResponse.allHeaderFields)")
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                await MainActor.run {
+                    errorMessage = "HTTP error: \(response)"
+                }
+                return
             }
             
-            print("Received data size: \(data.count) bytes")
-            
-            // Try to decode the response
-            let weatherResponse = try JSONDecoder().decode(WeatherResponse.self, from: data)
+            let decoder = JSONDecoder()
+            let weatherResponse = try decoder.decode(WeatherResponse.self, from: data)
             
             await MainActor.run {
                 self.currentWeather = weatherResponse.current
                 self.hourlyForecast = weatherResponse.hourly.toHourlyForecasts()
                 self.dailyForecast = weatherResponse.daily.toDailyForecasts()
-                self.isLoading = false
-                print("Successfully parsed weather data - Current: \(weatherResponse.current), Hourly: \(weatherResponse.hourly.toHourlyForecasts().count), Daily: \(weatherResponse.daily.toDailyForecasts().count)")
             }
-        } catch let decodingError as DecodingError {
-            await MainActor.run {
-                let errorDetails = self.formatDecodingError(decodingError)
-                self.errorMessage = "Weather data parsing failed: \(errorDetails)"
-                self.isLoading = false
-                print("Decoding error: \(errorDetails)")
-            }
+            
         } catch {
             await MainActor.run {
-                self.errorMessage = "Failed to fetch weather: \(error.localizedDescription)"
-                self.isLoading = false
-                print("Network error: \(error.localizedDescription)")
+                self.errorMessage = "Weather data parsing failed: \(error.localizedDescription)"
             }
+        }
+    }
+    
+    private func fetchWaveData(for location: CLLocation) async {
+        let urlString = "\(marineBaseURL)/marine?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&current=wave_height,wave_direction,wave_period&hourly=wave_height,wave_direction,wave_period&timezone=auto"
+        
+        guard let url = URL(string: urlString) else { return }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                // Try to find nearest location with wave data
+                await findNearestWaveLocation(for: location)
+                return
+            }
+            
+            let decoder = JSONDecoder()
+            let waveResponse = try decoder.decode(WaveResponse.self, from: data)
+            
+            await MainActor.run {
+                self.waveData = waveResponse.current
+                self.nearestWaveLocation = nil
+            }
+            
+        } catch {
+            // Try to find nearest location with wave data
+            await findNearestWaveLocation(for: location)
+        }
+    }
+    
+    private func findNearestWaveLocation(for location: CLLocation) async {
+        // Try some common coastal locations around Australia
+        let coastalLocations = [
+            ("Sydney", CLLocationCoordinate2D(latitude: -33.8688, longitude: 151.2093)),
+            ("Bondi", CLLocationCoordinate2D(latitude: -33.8915, longitude: 151.2767)),
+            ("Manly", CLLocationCoordinate2D(latitude: -33.7967, longitude: 151.2850)),
+            ("Palm Beach", CLLocationCoordinate2D(latitude: -33.5967, longitude: 151.3233)),
+            ("Clareville", CLLocationCoordinate2D(latitude: -33.6333, longitude: 151.3333)),
+            ("Newcastle", CLLocationCoordinate2D(latitude: -32.9283, longitude: 151.7817)),
+            ("Gold Coast", CLLocationCoordinate2D(latitude: -28.0167, longitude: 153.4000)),
+            ("Brisbane", CLLocationCoordinate2D(latitude: -27.4698, longitude: 153.0251)),
+            ("Melbourne", CLLocationCoordinate2D(latitude: -37.8136, longitude: 144.9631)),
+            ("Adelaide", CLLocationCoordinate2D(latitude: -34.9285, longitude: 138.6007)),
+            ("Perth", CLLocationCoordinate2D(latitude: -31.9505, longitude: 115.8605))
+        ]
+        
+        for (name, coordinate) in coastalLocations {
+            let urlString = "\(marineBaseURL)/marine?latitude=\(coordinate.latitude)&longitude=\(coordinate.longitude)&current=wave_height,wave_direction,wave_period&timezone=auto"
+            
+            guard let url = URL(string: urlString) else { continue }
+            
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else { continue }
+                
+                let decoder = JSONDecoder()
+                let waveResponse = try decoder.decode(WaveResponse.self, from: data)
+                
+                await MainActor.run {
+                    self.waveData = waveResponse.current
+                    self.nearestWaveLocation = "Using wave data from \(name) (nearest available location)"
+                }
+                return
+                
+            } catch {
+                continue
+            }
+        }
+        
+        // If no wave data found anywhere, set to nil
+        await MainActor.run {
+            self.waveData = nil
+            self.nearestWaveLocation = "No wave data available for this location"
         }
     }
     
@@ -330,5 +411,80 @@ struct DailyForecast: Identifiable, Codable {
         return tempRange.contains(avgTemp) && 
                windRange.contains(maxWindSpeed) && 
                precipitationRange.contains(precipitation)
+    }
+}
+
+// MARK: - Wave Data Models
+struct WaveResponse: Codable {
+    let current: WaveData
+}
+
+struct WaveData: Codable {
+    let time: String
+    let interval: Int
+    let waveHeight: Double
+    let waveDirection: Int
+    let wavePeriod: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case time, interval
+        case waveHeight = "wave_height"
+        case waveDirection = "wave_direction"
+        case wavePeriod = "wave_period"
+    }
+    
+    var formattedTime: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        if let date = formatter.date(from: time) {
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        }
+        return time
+    }
+    
+    var waveHeightFormatted: String {
+        return String(format: "%.1fm", waveHeight)
+    }
+    
+    var waveDirectionFormatted: String {
+        return "\(waveDirection)°"
+    }
+    
+    var wavePeriodFormatted: String {
+        return String(format: "%.1fs", wavePeriod)
+    }
+    
+    var isGoodFishing: Bool {
+        // Good fishing conditions: moderate wave height (0.5m - 2.5m) and reasonable period
+        let heightRange: ClosedRange<Double> = 0.5...2.5
+        let periodRange: ClosedRange<Double> = 5.0...12.0
+        
+        return heightRange.contains(waveHeight) && periodRange.contains(wavePeriod)
+    }
+    
+    var fishingCondition: String {
+        if isGoodFishing {
+            return "Good"
+        } else if waveHeight < 0.5 {
+            return "Too Calm"
+        } else if waveHeight > 2.5 {
+            return "Too Rough"
+        } else if wavePeriod < 5.0 {
+            return "Poor"
+        } else {
+            return "Fair"
+        }
+    }
+    
+    var fishingConditionColor: Color {
+        switch fishingCondition {
+        case "Good": return .green
+        case "Fair": return .orange
+        case "Poor": return .red
+        case "Too Calm": return .blue
+        case "Too Rough": return .red
+        default: return .gray
+        }
     }
 }

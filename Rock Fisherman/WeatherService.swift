@@ -13,6 +13,9 @@ class WeatherService: ObservableObject {
     @Published var nearestWaveLocation: String?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // Tide data
+    @Published var hourlyTide: [TideHeight] = []
+    @Published var dailyTideExtremes: [DailyTide] = []
     
     private let baseURL = "https://api.open-meteo.com/v1"
     private let marineBaseURL = "https://marine-api.open-meteo.com/v1"
@@ -28,10 +31,13 @@ class WeatherService: ObservableObject {
         
         // Fetch wave data
         await fetchWaveData(for: location)
+        // Fetch tides
+        await fetchTideData(for: location)
         
         // Merge wave data with forecasts after both are fetched
         await MainActor.run {
             self.mergeWaveDataWithForecasts()
+            self.mergeTideDataWithForecasts()
             self.isLoading = false
         }
     }
@@ -106,6 +112,24 @@ class WeatherService: ObservableObject {
             await findNearestWaveLocation(for: location)
         }
     }
+
+    // MARK: - Tide
+    private func fetchTideData(for location: CLLocation) async {
+        let tideService = TideService()
+        do {
+            let (heights, extremes) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+            await MainActor.run {
+                self.hourlyTide = heights
+                self.dailyTideExtremes = extremes
+            }
+        } catch {
+            await MainActor.run {
+                print("Tide fetch failed: \(error.localizedDescription)")
+                self.hourlyTide = []
+                self.dailyTideExtremes = []
+            }
+        }
+    }
     
     private func findNearestWaveLocation(for location: CLLocation) async {
         // Try some common coastal locations around Australia
@@ -178,6 +202,36 @@ class WeatherService: ObservableObject {
             }
         }
     }
+
+    private func mergeTideDataWithForecasts() {
+        // Attach hourly tide height to hourly forecasts by matching timestamps
+        guard !hourlyTide.isEmpty else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        let tideDict: [String: Double] = Dictionary(uniqueKeysWithValues: hourlyTide.map { ($0.time, $0.height) })
+        for i in 0..<hourlyForecast.count {
+            let key = hourlyForecast[i].time
+            if let h = tideDict[key] {
+                hourlyForecast[i].tideHeight = h
+            }
+        }
+
+        // For each daily forecast, compute highest and lowest tide from tide heights falling on that date.
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "yyyy-MM-dd"
+        var dateToHeights: [String: [Double]] = [:]
+        for t in hourlyTide {
+            let day = String(t.time.prefix(10))
+            dateToHeights[day, default: []].append(t.height)
+        }
+        for i in 0..<dailyForecast.count {
+            let day = dailyForecast[i].date
+            if let values = dateToHeights[day], let maxH = values.max(), let minH = values.min() {
+                dailyForecast[i].highTideHeight = maxH
+                dailyForecast[i].lowTideHeight = minH
+            }
+        }
+    }
     
     private func formatDecodingError(_ error: DecodingError) -> String {
         switch error {
@@ -192,6 +246,57 @@ class WeatherService: ObservableObject {
         @unknown default:
             return "Unknown decoding error: \(error.localizedDescription)"
         }
+    }
+}
+
+// MARK: - Tide Models and Service
+struct TideHeight: Identifiable, Codable {
+    let id = UUID()
+    let time: String // yyyy-MM-dd'T'HH:mm
+    let height: Double // meters
+}
+
+struct DailyTide: Identifiable, Codable {
+    let id = UUID()
+    let date: String // yyyy-MM-dd
+    let highs: [(time: String, height: Double)]
+    let lows: [(time: String, height: Double)]
+}
+
+enum TideServiceError: Error { case notAvailable }
+
+class TideService {
+    // Placeholder implementation. Replace with a real tide API integration.
+    // Returns synthesized semidiurnal tide for demo so UI can be built now.
+    func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide]) {
+        // Generate 3 days of hourly sinusoidal tide heights centered around MSL
+        var heights: [TideHeight] = []
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date()
+        let start = calendar.date(byAdding: .hour, value: -12, to: now) ?? now
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        for h in 0..<(24*3) {
+            let t = calendar.date(byAdding: .hour, value: h, to: start) ?? now
+            // Simple tide function: 2 highs and 2 lows per day
+            let phase = Double(h) / 6.0 * .pi // ~12.4h period approximated
+            let height = 1.2 + 0.8 * sin(phase)
+            heights.append(TideHeight(time: formatter.string(from: t), height: height))
+        }
+        // Compute extremes per day
+        var byDay: [String: [TideHeight]] = [:]
+        for th in heights {
+            let day = String(th.time.prefix(10))
+            byDay[day, default: []].append(th)
+        }
+        var extremes: [DailyTide] = []
+        for (day, arr) in byDay.sorted(by: { $0.key < $1.key }) {
+            // Pick top 2 highs and lows
+            let highs = Array(arr.sorted(by: { $0.height > $1.height }).prefix(2)).map { ($0.time, $0.height) }
+            let lows = Array(arr.sorted(by: { $0.height < $1.height }).prefix(2)).map { ($0.time, $0.height) }
+            extremes.append(DailyTide(date: day, highs: highs, lows: lows))
+        }
+        return (heights, extremes)
     }
 }
 
@@ -366,6 +471,7 @@ struct HourlyForecast: Identifiable, Codable {
     var waveHeight: Double?
     var waveDirection: Int?
     var wavePeriod: Double?
+    var tideHeight: Double?
     
     var formattedTime: String {
         let formatter = DateFormatter()
@@ -419,6 +525,8 @@ struct DailyForecast: Identifiable, Codable {
     var waveHeight: Double?
     var waveDirection: Int?
     var wavePeriod: Double?
+    var highTideHeight: Double?
+    var lowTideHeight: Double?
     
     var formattedDate: String {
         let formatter = DateFormatter()

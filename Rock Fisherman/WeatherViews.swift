@@ -484,14 +484,20 @@ struct DailyForecastView: View {
                                 }
 
                                 // Tide extremes
-                                if let hi = forecast.highTideHeight, let lo = forecast.lowTideHeight {
+                if let hi = forecast.highTideHeight, let lo = forecast.lowTideHeight {
                                     HStack(spacing: 8) {
                                         Image(systemName: "arrow.up.arrow.down")
                                             .font(.caption)
                                             .foregroundColor(.teal)
-                                        Text("High: \(String(format: "%.1fm", hi))  Low: \(String(format: "%.1fm", lo))")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                        if let th = forecast.highTideTime, let tl = forecast.lowTideTime {
+                            Text("High: \(String(format: "%.1fm", hi)) (\(th))  Low: \(String(format: "%.1fm", lo)) (\(tl))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("High: \(String(format: "%.1fm", hi))  Low: \(String(format: "%.1fm", lo))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                                     }
                                 }
                             }

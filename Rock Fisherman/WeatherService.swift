@@ -16,6 +16,7 @@ class WeatherService: ObservableObject {
     // Tide data
     @Published var hourlyTide: [TideHeight] = []
     @Published var dailyTideExtremes: [DailyTide] = []
+    @Published var tideCopyright: String?
     
     private let baseURL = "https://api.open-meteo.com/v1"
     private let marineBaseURL = "https://marine-api.open-meteo.com/v1"
@@ -117,16 +118,18 @@ class WeatherService: ObservableObject {
     private func fetchTideData(for location: CLLocation) async {
         let tideService = TideService()
         do {
-            let (heights, extremes) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+            let (heights, extremes, notice) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
             await MainActor.run {
                 self.hourlyTide = heights
                 self.dailyTideExtremes = extremes
+                self.tideCopyright = notice
             }
         } catch {
             await MainActor.run {
                 print("Tide fetch failed: \(error.localizedDescription)")
                 self.hourlyTide = []
                 self.dailyTideExtremes = []
+                self.tideCopyright = nil
             }
         }
     }
@@ -216,21 +219,32 @@ class WeatherService: ObservableObject {
             }
         }
 
-        // For each daily forecast, compute highest and lowest tide from tide heights falling on that date.
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateFormat = "yyyy-MM-dd"
-        var dateToHeights: [String: [Double]] = [:]
-        for t in hourlyTide {
-            let day = String(t.time.prefix(10))
-            dateToHeights[day, default: []].append(t.height)
-        }
+        // For each day, use extremes list to assign high/low heights and times
+        var dayToExtremes: [String: DailyTide] = [:]
+        for d in dailyTideExtremes { dayToExtremes[d.date] = d }
         for i in 0..<dailyForecast.count {
             let day = dailyForecast[i].date
-            if let values = dateToHeights[day], let maxH = values.max(), let minH = values.min() {
-                dailyForecast[i].highTideHeight = maxH
-                dailyForecast[i].lowTideHeight = minH
+            if let d = dayToExtremes[day] {
+                if let maxHigh = d.highs.max(by: { $0.height < $1.height }) {
+                    dailyForecast[i].highTideHeight = maxHigh.height
+                    dailyForecast[i].highTideTime = formatTime(maxHigh.time)
+                }
+                if let minLow = d.lows.min(by: { $0.height < $1.height }) {
+                    dailyForecast[i].lowTideHeight = minLow.height
+                    dailyForecast[i].lowTideTime = formatTime(minLow.time)
+                }
             }
         }
+    }
+
+    private func formatTime(_ iso: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        if let date = formatter.date(from: String(iso.prefix(16))) {
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        }
+        return String(iso.suffix(5))
     }
     
     private func formatDecodingError(_ error: DecodingError) -> String {
@@ -284,38 +298,93 @@ struct DailyTide: Identifiable, Codable {
 enum TideServiceError: Error { case notAvailable }
 
 class TideService {
-    // Placeholder implementation. Replace with a real tide API integration.
-    // Returns synthesized semidiurnal tide for demo so UI can be built now.
-    func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide]) {
-        // Generate 3 days of hourly sinusoidal tide heights centered around MSL
-        var heights: [TideHeight] = []
-        let calendar = Calendar(identifier: .gregorian)
-        let now = Date()
-        let start = calendar.date(byAdding: .hour, value: -12, to: now) ?? now
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
-        for h in 0..<(24*3) {
-            let t = calendar.date(byAdding: .hour, value: h, to: start) ?? now
-            // Simple tide function: 2 highs and 2 lows per day
-            let phase = Double(h) / 6.0 * .pi // ~12.4h period approximated
-            let height = 1.2 + 0.8 * sin(phase)
-            heights.append(TideHeight(time: formatter.string(from: t), height: height))
+    // WorldTides API integration
+    // Requires Info.plist key: WORLDTIDES_API_KEY
+    func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
+        // Allow compile-time fallback of API key if not provided in Info.plist
+        let plistKey = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
+        let apiKey = (plistKey?.isEmpty == false ? plistKey! : "cc76fb75-5b9b-4123-9faa-3967265a1847")
+        guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
+
+        // Fetch hourly heights and extremes for 3 days starting today (UTC is fine; API returns ISO strings with offset)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let today = dateFormatter.string(from: Date())
+
+        var comps = URLComponents(string: "https://www.worldtides.info/api/v3")!
+        comps.queryItems = [
+            URLQueryItem(name: "heights", value: nil),
+            URLQueryItem(name: "extremes", value: nil),
+            URLQueryItem(name: "lat", value: String(latitude)),
+            URLQueryItem(name: "lon", value: String(longitude)),
+            URLQueryItem(name: "date", value: today),
+            URLQueryItem(name: "days", value: "3"),
+            URLQueryItem(name: "key", value: apiKey)
+        ]
+        guard let url = comps.url else { throw TideServiceError.notAvailable }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw TideServiceError.notAvailable
         }
-        // Compute extremes per day
-        var byDay: [String: [TideHeight]] = [:]
-        for th in heights {
-            let day = String(th.time.prefix(10))
-            byDay[day, default: []].append(th)
+
+        let decoded = try JSONDecoder().decode(WorldTidesCombined.self, from: data)
+
+        // Map heights → TideHeight with local normalized format
+        let outHeights: [TideHeight] = decoded.heights.map { h in
+            TideHeight(time: Self.normalizeISOMinute(h.date), height: h.height)
         }
-        var extremes: [DailyTide] = []
-        for (day, arr) in byDay.sorted(by: { $0.key < $1.key }) {
-            // Pick top 2 highs and lows
-            let highs = Array(arr.sorted(by: { $0.height > $1.height }).prefix(2)).map { TideExtreme(time: $0.time, height: $0.height) }
-            let lows = Array(arr.sorted(by: { $0.height < $1.height }).prefix(2)).map { TideExtreme(time: $0.time, height: $0.height) }
-            extremes.append(DailyTide(date: day, highs: highs, lows: lows))
+
+        // Group extremes per day
+        var byDay: [String: (highs: [TideExtreme], lows: [TideExtreme])] = [:]
+        for e in decoded.extremes {
+            let iso = Self.normalizeISOMinute(e.date)
+            let day = String(iso.prefix(10))
+            if e.type.lowercased() == "high" {
+                byDay[day, default: ([], [])].highs.append(TideExtreme(time: iso, height: e.height))
+            } else {
+                byDay[day, default: ([], [])].lows.append(TideExtreme(time: iso, height: e.height))
+            }
         }
-        return (heights, extremes)
+        let outExtremes: [DailyTide] = byDay.keys.sorted().map { day in
+            var highs = byDay[day]?.highs ?? []
+            var lows = byDay[day]?.lows ?? []
+            // Keep up to 2 each, pick most extreme
+            highs.sort { $0.height > $1.height }
+            lows.sort { $0.height < $1.height }
+            return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
+        }
+
+        return (outHeights, outExtremes, decoded.copyright)
     }
+
+    private static func normalizeISOMinute(_ iso: String) -> String {
+        // Convert ISO with offset → trim to minute, keep local time string if possible
+        // Example: 2025-04-06T12:30+10:00 → 2025-04-06T12:30
+        if let idx = iso.firstIndex(of: "+") ?? iso.firstIndex(of: "-") {
+            let base = String(iso[..<idx])
+            return String(base.prefix(16))
+        }
+        return String(iso.prefix(16))
+    }
+}
+
+// MARK: - WorldTides API DTOs
+private struct WorldTidesCombined: Decodable {
+    let heights: [WorldTideHeight]
+    let extremes: [WorldTideExtreme]
+    let copyright: String?
+}
+
+private struct WorldTideHeight: Decodable {
+    let date: String // ISO with offset
+    let height: Double
+}
+
+private struct WorldTideExtreme: Decodable {
+    let date: String
+    let height: Double
+    let type: String // High / Low
 }
 
 // MARK: - Weather Response Models
@@ -545,6 +614,8 @@ struct DailyForecast: Identifiable, Codable {
     var wavePeriod: Double?
     var highTideHeight: Double?
     var lowTideHeight: Double?
+    var highTideTime: String?
+    var lowTideTime: String?
     
     var formattedDate: String {
         let formatter = DateFormatter()

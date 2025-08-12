@@ -4,6 +4,7 @@ import SwiftUI
 
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
+    private var lastLocationTimestamp: Date?
     
     @Published var location: CLLocation?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
@@ -48,8 +49,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 print("LocationManager: Requesting WhenInUse authorization")
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedWhenInUse, .authorizedAlways:
-                print("LocationManager: Authorized — waiting for explicit user selection, not auto-requesting location")
-                self.isLoading = false
+                // If we have a recent cached location (<3 min), reuse it immediately for speed
+                if let loc = self.location, let ts = self.lastLocationTimestamp, Date().timeIntervalSince(ts) < 180 {
+                    print("LocationManager: Using cached location (<3m old)")
+                    self.setLocation(loc, name: "Current Location")
+                } else {
+                    print("LocationManager: Authorized — requesting one-shot location due to user action")
+                    self.locationManager.requestLocation()
+                }
             case .denied, .restricted:
                 print("LocationManager: Permission denied/restricted")
                 self.isLoading = false
@@ -88,6 +95,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             // Prefer high-accuracy/recency, but accept first update quickly to improve perceived speed
             if self.location == nil || location.horizontalAccuracy <= (self.location?.horizontalAccuracy ?? .greatestFiniteMagnitude) {
                 self.location = location
+                self.lastLocationTimestamp = Date()
                 self.hasSelectedLocation = true
                 self.selectedLocationName = "Current Location"
             }

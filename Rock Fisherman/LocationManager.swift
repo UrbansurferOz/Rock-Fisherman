@@ -48,17 +48,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 print("LocationManager: Requesting WhenInUse authorization")
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedWhenInUse, .authorizedAlways:
-                print("LocationManager: Authorized, requesting one-shot location")
-                // If we already have a recent location (last few minutes), reuse it to speed up UX
-                if let cached = self.locationManager.location, Date().timeIntervalSince(cached.timestamp) < 180 {
-                    print("LocationManager: Using cached location (age < 3 min)")
-                    self.location = cached
-                    self.hasSelectedLocation = true
-                    self.selectedLocationName = "Current Location"
-                    self.isLoading = false
-                } else {
-                    self.locationManager.requestLocation()
-                }
+                print("LocationManager: Authorized — waiting for explicit user selection, not auto-requesting location")
+                self.isLoading = false
             case .denied, .restricted:
                 print("LocationManager: Permission denied/restricted")
                 self.isLoading = false
@@ -138,13 +129,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 return
             }
 
-            // Only request location if we don't already have a manually selected location
-            if (status == .authorizedWhenInUse || status == .authorizedAlways) && !self.hasSelectedLocation {
-                print("LocationManager: Requesting location due to authorization change")
-                self.locationManager.requestLocation()
-            } else {
-                print("LocationManager: Skipping location request (hasSelectedLocation: \(self.hasSelectedLocation))")
-            }
+            // Do not auto-request; wait until user explicitly selects current location
+            print("LocationManager: Authorization change handled (no auto location request)")
         }
     }
 }

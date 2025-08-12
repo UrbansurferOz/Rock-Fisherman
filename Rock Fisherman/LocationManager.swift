@@ -51,13 +51,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedWhenInUse, .authorizedAlways:
                 // If we have a recent cached location (<3 min), reuse it immediately for speed
-                if let loc = self.location, let ts = self.lastLocationTimestamp, Date().timeIntervalSince(ts) < 180 {
-                    print("LocationManager: Using cached location (<3m old)")
-                    self.setLocation(loc, name: "Current Location")
-                } else {
-                    print("LocationManager: Authorized — requesting one-shot location due to user action")
-                    self.locationManager.requestLocation()
-                }
+                // Always request a fresh fix so the user sees an update even if location is unchanged.
+                // We'll still use cached quickly if it arrives later via delegate.
+                print("LocationManager: Authorized — requesting one-shot location due to user action")
+                self.locationManager.requestLocation()
             case .denied, .restricted:
                 print("LocationManager: Permission denied/restricted")
                 self.isLoading = false
@@ -72,7 +69,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("LocationManager.setLocation called with: \(name ?? "unnamed") at (\(location.coordinate.latitude), \(location.coordinate.longitude))")
         print("LocationManager.setLocation: Previous state - hasSelectedLocation: \(hasSelectedLocation), selectedLocationName: \(selectedLocationName ?? "nil")")
         
-        self.location = location
+        // Force a new instance so SwiftUI change handlers fire even if coords are the same
+        let copied = CLLocation(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+        self.location = copied
         self.hasSelectedLocation = true
         self.selectedLocationName = name
         self.isLoading = false

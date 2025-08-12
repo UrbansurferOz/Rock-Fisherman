@@ -363,6 +363,9 @@ class TideService {
                 URLQueryItem(name: "date", value: today),
                 URLQueryItem(name: "days", value: String(days)),
                 URLQueryItem(name: "localtime", value: "true"),
+                // Match common public apps that report heights relative to LAT
+                URLQueryItem(name: "datum", value: "LAT"),
+                URLQueryItem(name: "units", value: "metric"),
                 URLQueryItem(name: "key", value: apiKey)
             ])
             c.queryItems = items

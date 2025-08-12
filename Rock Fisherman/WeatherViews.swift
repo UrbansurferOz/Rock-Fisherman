@@ -826,6 +826,13 @@ struct TideChartView: View {
                             .fill(Color.teal)
                             .frame(width: 8, height: 8)
                             .position(dot)
+                        if let h = model.currentHeight {
+                            Text(String(format: "%.1fm", h))
+                                .font(.caption2)
+                                .bold()
+                                .foregroundStyle(.teal)
+                                .position(x: min(rect.maxX - 10, dot.x + 22), y: max(rect.minY + 10, dot.y - 12))
+                        }
                     }
 
                     // Right-side y-axis tick labels
@@ -904,6 +911,7 @@ private struct TideChartModel {
 
     let smoothPath: Path?
     let currentPoint: CGPoint?
+    let currentHeight: Double?
     let hGrid: [CGFloat]
     let vGrid: [VTick]
     let debugLines: [String]
@@ -937,6 +945,7 @@ private struct TideChartModel {
             dbg.append("windowed=\(windowed.count) — insufficient points or rect too small")
             smoothPath = nil
             currentPoint = nil
+            currentHeight = nil
             yTicks = []
             hGrid = []
             vGrid = []
@@ -972,9 +981,11 @@ private struct TideChartModel {
         // 5) Current closest sample → dot
         if let nearest = windowed.min(by: { abs($0.0.timeIntervalSince(now)) < abs($1.0.timeIntervalSince(now)) }) {
             currentPoint = CGPoint(x: xPos(nearest.0), y: yPos(nearest.1))
+            currentHeight = nearest.1
             dbg.append("nearest=\(nearest.0) h=\(String(format: "%.2f", nearest.1))")
         } else {
             currentPoint = nil
+            currentHeight = nil
         }
 
         // 6) Grid + labels

@@ -276,6 +276,9 @@ struct HourlyForecastView: View {
                     Text("Cloud")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .allowsTightening(true)
                         .frame(width: colIcon, alignment: .leading)
 
                     Text("Temp")
@@ -301,9 +304,7 @@ struct HourlyForecastView: View {
 
                     // We won't add a header for tide; show below Temp in row
 
-                    Text("Fish")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary)
+                    Text("")
                         .frame(width: colFish, alignment: .leading)
                 }
                 .padding(.vertical, 6)
@@ -317,9 +318,6 @@ struct HourlyForecastView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(f.formattedTime)
                                 .font(.caption).fontWeight(.medium)
-                            Text(f.formattedRelativeTime)
-                                .font(.caption2).foregroundColor(.secondary)
-                                .lineLimit(1)
                         }
                         .frame(width: colTime, alignment: .leading)
 

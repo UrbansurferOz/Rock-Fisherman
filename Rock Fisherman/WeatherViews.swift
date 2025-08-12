@@ -489,22 +489,37 @@ struct DailyForecastView: View {
                                         }
                                     }
 
-                                    // Tide extremes
+                                    // Tide extremes (compact single line)
                                     if let hi = forecast.highTideHeight, let lo = forecast.lowTideHeight {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: "arrow.up.arrow.down")
-                                                .font(.caption)
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "arrow.up")
+                                                .font(.caption2)
                                                 .foregroundColor(.teal)
-                                            if let th = forecast.highTideTime, let tl = forecast.lowTideTime {
-                                                Text("High: \(String(format: "%.1fm", hi)) (\(th))  Low: \(String(format: "%.1fm", lo)) (\(tl))")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
+                                            if let th = forecast.highTideTime {
+                                                Text("\(String(format: "%.1fm", hi)) \(th)")
+                                                    .lineLimit(1)
                                             } else {
-                                                Text("High: \(String(format: "%.1fm", hi))  Low: \(String(format: "%.1fm", lo))")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
+                                                Text("\(String(format: "%.1fm", hi))")
+                                                    .lineLimit(1)
+                                            }
+                                            Text("  ")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            Image(systemName: "arrow.down")
+                                                .font(.caption2)
+                                                .foregroundColor(.teal)
+                                            if let tl = forecast.lowTideTime {
+                                                Text("\(String(format: "%.1fm", lo)) \(tl)")
+                                                    .lineLimit(1)
+                                            } else {
+                                                Text("\(String(format: "%.1fm", lo))")
+                                                    .lineLimit(1)
                                             }
                                         }
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.75)
                                     }
                                 }
                                 

@@ -589,8 +589,8 @@ class FishingNewsViewModel: ObservableObject {
         let placeQuery: String = placeTokens.isEmpty ? "" : "(" + placeTokens.joined(separator: " OR ") + ")"
         let baseTerms = "(fishing OR \"catch report\" OR \"fishing report\")"
 
-        // Heuristic query to bias toward local results; Bing doesn't support strict radius filters
-        let queryComponents = [placeQuery, baseTerms, "near", "within 50km", "after:\(date30DaysAgo)"]
+        // Heuristic query to bias toward local results. NewsAPI does not support radius filters, so we avoid unsupported tokens.
+        let queryComponents = [placeQuery, baseTerms]
             .filter { !$0.isEmpty }
         let query = queryComponents.joined(separator: " ")
         let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
@@ -723,7 +723,7 @@ class FishingNewsViewModel: ObservableObject {
 struct FishingNewsView: View {
     @ObservedObject var locationManager: LocationManager
     @StateObject private var viewModel = FishingNewsViewModel()
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
@@ -756,8 +756,8 @@ struct FishingNewsView: View {
 
                                 if !article.description.isEmpty {
                                     Text(article.description)
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
                                 }
 
                                 HStack(spacing: 4) {
@@ -780,6 +780,48 @@ struct FishingNewsView: View {
                                         .font(.caption)
                                         .foregroundColor(.blue)
                                 }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+                        }
+
+                        // NSW: Show Tides4Fishing summary card below news
+                        if isInNewSouthWales(locationManager.location) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "waveform")
+                                        .foregroundColor(.blue)
+                                    Text("Tides, Solunar, Weather • Sydney (NSW)")
+                                        .font(.headline)
+                                }
+
+                                Text("Key data available for Sydney on Tides4Fishing:")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Label("Tides: daily high/low times, tidal coefficients, tables", systemImage: "clock")
+                                        .font(.footnote)
+                                    Label("Solunar: moonrise/set, phases, bite/activity windows", systemImage: "moon")
+                                        .font(.footnote)
+                                    Label("Weather: wind, precipitation, visibility, and UV guidance", systemImage: "sun.max")
+                                        .font(.footnote)
+                                    Label("Water: temperature and swell (height, period, direction)", systemImage: "water.waves")
+                                        .font(.footnote)
+                                    Label("Nearby sites: Manly, Dee Why, Narrabeen, Newport, Palm Beach, Pittwater, etc.", systemImage: "mappin.and.ellipse")
+                                        .font(.footnote)
+                                }
+
+                                if let url = URL(string: "https://tides4fishing.com/au/new-south-wales/sydney") {
+                                    Link("Open Tides4Fishing – Sydney (NSW)", destination: url)
+                                        .font(.footnote)
+                                        .foregroundColor(.blue)
+                                }
+
+                                Text("Source: Tides4Fishing (Sydney, NSW)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
                             }
                             .padding()
                             .background(Color(.systemGray6))
@@ -800,6 +842,15 @@ struct FishingNewsView: View {
             viewModel.fetchNews(for: locationManager.location, placeName: locationManager.selectedLocationName)
         }
     }
+}
+
+// MARK: - NSW Region Check
+private func isInNewSouthWales(_ location: CLLocation?) -> Bool {
+    guard let loc = location else { return false }
+    // Rough NSW bounding box: lat [-37.6, -28.0], lon [141.0, 154.1]
+    let lat = loc.coordinate.latitude
+    let lon = loc.coordinate.longitude
+    return (lat >= -37.6 && lat <= -28.0) && (lon >= 141.0 && lon <= 154.1)
 }
 
 // MARK: - Wave Info View

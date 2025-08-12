@@ -298,7 +298,6 @@ struct HourlyForecastView: View {
                         .frame(width: colFish, alignment: .leading)
                 }
                 .padding(.vertical, 6)
-                .padding(.horizontal, 8)
                 .background(Color(.systemGray6))
                 .cornerRadius(6)
 
@@ -370,16 +369,16 @@ struct HourlyForecastView: View {
                         Image(systemName: f.isGoodFishing ? "fish.fill" : "fish")
                             .font(.caption2)
                             .foregroundColor(f.isGoodFishing ? .green : .gray)
-                            .frame(width: colFish)
+                            .frame(width: colFish, alignment: .trailing)
                     }
                     .padding(.vertical, 6)
-                    .padding(.horizontal, 8)
                     .background(Color(.systemGray6))
                     .cornerRadius(6)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
 

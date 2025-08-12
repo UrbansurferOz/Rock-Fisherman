@@ -123,6 +123,7 @@ class WeatherService: ObservableObject {
         let plistKeyLen = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.count ?? 0
         print("Tide key visibility: envLen=\(envKeyLen) plistLen=\(plistKeyLen)")
         do {
+            print("Fetching tides for lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude)")
             let (heights, extremes, notice) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
             await MainActor.run {
                 self.hourlyTide = heights

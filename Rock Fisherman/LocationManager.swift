@@ -4,6 +4,7 @@ import SwiftUI
 
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
+    private let geocoder = CLGeocoder()
     private var lastLocationTimestamp: Date?
     
     @Published var location: CLLocation?
@@ -97,7 +98,21 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 self.location = location
                 self.lastLocationTimestamp = Date()
                 self.hasSelectedLocation = true
-                self.selectedLocationName = "Current Location"
+
+                // Reverse geocode to show a meaningful place name instead of a generic label
+                self.geocoder.reverseGeocodeLocation(location) { placemarks, _ in
+                    DispatchQueue.main.async {
+                        if let p = placemarks?.first {
+                            let locality = [p.subLocality, p.locality].compactMap { $0 }.first
+                            let admin = p.administrativeArea
+                            let country = p.country
+                            let parts = [locality, admin, country].compactMap { $0 }.filter { !$0.isEmpty }
+                            self.selectedLocationName = parts.isEmpty ? "Current Location" : parts.joined(separator: ", ")
+                        } else {
+                            self.selectedLocationName = "Current Location"
+                        }
+                    }
+                }
             }
             self.isLoading = false
         }

@@ -253,6 +253,7 @@ struct HourlyForecastView: View {
     private let colTime: CGFloat = 70
     private let colIcon: CGFloat = 20
     private let colTemp: CGFloat = 35
+    private let colTide: CGFloat = 45
     private let colWind: CGFloat = 40
     private let colRain: CGFloat = 35
     private let colWave: CGFloat = 45   // a touch wider for "0.0m"
@@ -272,12 +273,18 @@ struct HourlyForecastView: View {
                         .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
                         .frame(width: colTime, alignment: .leading)
 
-                    Text("") // icon column spacer
+                    Text("Cloud")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
                         .frame(width: colIcon)
 
                     Text("Temp")
                         .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
                         .frame(width: colTemp, alignment: .leading)
+
+                    Text("High\nTide")
+                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .frame(width: colTide, alignment: .leading)
 
                     Text("Wind")
                         .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
@@ -314,7 +321,7 @@ struct HourlyForecastView: View {
                         }
                         .frame(width: colTime, alignment: .leading)
 
-                        // Icon
+                        // Cloud Icon
                         Image(systemName: weatherIcon(for: f.weatherCode))
                             .font(.caption)
                             .foregroundColor(.blue)
@@ -326,10 +333,17 @@ struct HourlyForecastView: View {
                             .monospacedDigit()
                             .frame(width: colTemp, alignment: .leading)
 
-                        // Inline Tide Height (if available)
+                        // High Tide (tide height)
                         if let tide = f.tideHeight {
                             Text(String(format: "%.1fm", tide))
-                                .font(.caption2).foregroundColor(.secondary)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .frame(width: colTide, alignment: .leading)
+                        } else {
+                            Text("–")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .frame(width: colTide, alignment: .leading)
                         }
 
                         // Wind

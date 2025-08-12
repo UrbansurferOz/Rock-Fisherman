@@ -828,14 +828,13 @@ struct TideChartView: View {
                             .position(dot)
                     }
 
-                    // Right-side min/max labels
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(model.maxLabel).font(.caption2).foregroundStyle(.secondary)
-                        Spacer()
-                        Text(model.minLabel).font(.caption2).foregroundStyle(.secondary)
+                    // Right-side y-axis tick labels
+                    ForEach(model.yTicks, id: \.y) { tick in
+                        Text(tick.label)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .position(x: rect.maxX + 18, y: tick.y)
                     }
-                    .frame(width: 36)
-                    .position(x: rect.maxX + 18, y: rect.midY)
 
                     // Bottom hour labels
                     ForEach(model.vGrid, id: \.x) { tick in
@@ -849,9 +848,53 @@ struct TideChartView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .frame(height: 160)
+
+            // Next 24 Hours extremes list
+            if let extremes = nextExtremes(from: weatherService.dailyTideExtremes) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock")
+                            .foregroundStyle(.secondary)
+                        Text("Next 24 Hours")
+                            .font(.headline)
+                    }
+                    ForEach(extremes, id: \.time) { e in
+                        HStack {
+                            Image(systemName: e.isHigh ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                                .foregroundStyle(e.isHigh ? .blue : .red)
+                            Text(e.time)
+                                .frame(width: 56, alignment: .leading)
+                            Text(e.isHigh ? "High" : "Low")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(String(format: "%.1fm", e.height))
+                                .bold()
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+                .padding(.horizontal)
+            }
         }
         .padding(.horizontal)
         .padding(.top, 2)
+    }
+
+    private func nextExtremes(from daily: [DailyTide]) -> [(time: String, isHigh: Bool, height: Double)]? {
+        // Flatten next 24h extremes from DailyTide
+        let now = Date()
+        let fmtIn = DateFormatter(); fmtIn.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        let fmtOut = DateFormatter(); fmtOut.dateFormat = "HH:mm"
+        var items: [(Date, Bool, Double)] = []
+        for d in daily {
+            for h in d.highs { if let dt = fmtIn.date(from: String(h.time.prefix(16))) { items.append((dt, true, h.height)) } }
+            for l in d.lows  { if let dt = fmtIn.date(from: String(l.time.prefix(16))) { items.append((dt, false, l.height)) } }
+        }
+        let next = items.filter { $0.0 >= now && $0.0 <= now.addingTimeInterval(24*3600) }
+            .sorted { $0.0 < $1.0 }
+            .prefix(4)
+            .map { (fmtOut.string(from: $0.0), $0.1, $0.2) }
+        return next.isEmpty ? nil : Array(next)
     }
 }
 
@@ -861,11 +904,11 @@ private struct TideChartModel {
 
     let smoothPath: Path?
     let currentPoint: CGPoint?
-    let minLabel: String
-    let maxLabel: String
     let hGrid: [CGFloat]
     let vGrid: [VTick]
     let debugLines: [String]
+    struct YTick: Hashable { let y: CGFloat; let label: String }
+    let yTicks: [YTick]
 
     init(samples: [(Date, Double)], spanHours: Int, endAtNow: Bool, rect: CGRect) {
         var dbg: [String] = []
@@ -894,8 +937,7 @@ private struct TideChartModel {
             dbg.append("windowed=\(windowed.count) — insufficient points or rect too small")
             smoothPath = nil
             currentPoint = nil
-            minLabel = ""
-            maxLabel = ""
+            yTicks = []
             hGrid = []
             vGrid = []
             debugLines = dbg
@@ -934,11 +976,14 @@ private struct TideChartModel {
         }
 
         // 6) Grid + labels
-        minLabel = String(format: "%.1fm", yMin)
-        maxLabel = String(format: "%.1fm", yMax)
-
         hGrid = stride(from: 0, through: 4, by: 1).map { i in
             rect.maxY - CGFloat(i) / 4 * rect.height
+        }
+        yTicks = (0...4).map { i in
+            let ratio = CGFloat(i) / 4
+            let y = rect.maxY - ratio * rect.height
+            let value = yMin + Double(ratio) * ySpan
+            return YTick(y: y, label: String(format: "%.1fm", value))
         }
 
         // Vertical ticks every 3 hours, aligned to the previous whole 3-hour mark

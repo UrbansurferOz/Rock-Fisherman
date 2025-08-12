@@ -893,7 +893,7 @@ struct TideChartView: View {
         let next = items.filter { $0.0 >= now && $0.0 <= now.addingTimeInterval(24*3600) }
             .sorted { $0.0 < $1.0 }
             .prefix(4)
-            .map { (fmtOut.string(from: $0.0), $0.1, max(0, $0.2)) }
+            .map { (fmtOut.string(from: $0.0), $0.1, abs($0.2)) }
         return next.isEmpty ? nil : Array(next)
     }
 }

@@ -252,7 +252,8 @@ class WeatherService: ObservableObject {
             let day = dailyForecast[i].date
             if let d = dayToExtremes[day] {
                 if let maxHigh = d.highs.max(by: { $0.height < $1.height }) {
-                     dailyForecast[i].highTideTime = formatTime(maxHigh.time)
+                    dailyForecast[i].highTideHeight = maxHigh.height
+                    dailyForecast[i].highTideTime = formatTime(maxHigh.time)
                 }
                 if let minLow = d.lows.min(by: { $0.height < $1.height }) {
                     dailyForecast[i].lowTideHeight = minLow.height

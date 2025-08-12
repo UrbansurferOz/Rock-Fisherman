@@ -585,14 +585,17 @@ class FishingNewsViewModel: ObservableObject {
         let isoFormatter = ISO8601DateFormatter()
         let date30DaysAgo = isoFormatter.string(from: last30)
 
-        let placeTokens: [String] = makePlaceTokens(from: placeName)
+        let placeTokens: [String] = makePlaceTokens(from: placeName, location: location)
         let placeQuery: String = placeTokens.isEmpty ? "" : "(" + placeTokens.joined(separator: " OR ") + ")"
         let baseTerms = "(fishing OR \"catch report\" OR \"fishing report\")"
 
-        // Heuristic query to bias toward local results. NewsAPI does not support radius filters, so we avoid unsupported tokens.
-        let queryComponents = [placeQuery, baseTerms]
-            .filter { !$0.isEmpty }
-        let query = queryComponents.joined(separator: " ")
+        // Heuristic query to bias toward local results. NewsAPI doesn't support radius filters.
+        let query: String
+        if placeQuery.isEmpty {
+            query = baseTerms
+        } else {
+            query = "\(placeQuery) AND \(baseTerms)"
+        }
         let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
 
         // NewsAPI.org configuration — load from environment first, then Info.plist
@@ -625,37 +628,42 @@ class FishingNewsViewModel: ObservableObject {
                 let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
                 let loweredTokens = Set(placeTokens.map { $0.lowercased() })
 
-                return response.articles.compactMap { doc in
-                    let title = doc.title ?? ""
-                    let description = doc.description ?? ""
-                    let url = doc.url
-                    let publishedStr = doc.publishedAt
-                    let source = doc.source?.name ?? "Unknown"
+                func mapArticles(filterLocal: Bool) -> [FishingArticle] {
+                    response.articles.compactMap { doc in
+                        let title = doc.title ?? ""
+                        let description = doc.description ?? ""
+                        let url = doc.url
+                        let publishedStr = doc.publishedAt
+                        let source = doc.source?.name ?? "Unknown"
 
-                    guard let articleUrl = url, !title.isEmpty else { return nil }
+                        guard let articleUrl = url, !title.isEmpty else { return nil }
 
-                    let published = (publishedStr.flatMap { isoDecoder.date(from: $0) }) ?? Date()
-                    guard published >= cutoff else { return nil }
+                        let published = (publishedStr.flatMap { isoDecoder.date(from: $0) }) ?? Date()
+                        guard published >= cutoff else { return nil }
 
-                    let titleLower = title.lowercased()
-                    let descLower = description.lowercased()
-                    // Keep results that mention at least one local token to bias local radius
-                    if !loweredTokens.isEmpty {
-                        let matchesLocal = loweredTokens.contains(where: { token in
-                            titleLower.contains(token) || descLower.contains(token)
-                        })
-                        if !matchesLocal { return nil }
+                        let titleLower = title.lowercased()
+                        let descLower = description.lowercased()
+                        if filterLocal, !loweredTokens.isEmpty {
+                            let matchesLocal = loweredTokens.contains(where: { token in
+                                titleLower.contains(token) || descLower.contains(token)
+                            })
+                            if !matchesLocal { return nil }
+                        }
+
+                        return FishingArticle(
+                            title: title,
+                            description: description,
+                            url: articleUrl,
+                            publishedAt: published,
+                            source: source
+                        )
                     }
-
-                    return FishingArticle(
-                        title: title,
-                        description: description,
-                        url: articleUrl,
-                        publishedAt: published,
-                        source: source
-                    )
                 }
-                .sorted(by: { $0.publishedAt > $1.publishedAt })
+
+                let local = mapArticles(filterLocal: true)
+                if !local.isEmpty { return local.sorted(by: { $0.publishedAt > $1.publishedAt }) }
+                let fallback = mapArticles(filterLocal: false)
+                return fallback.sorted(by: { $0.publishedAt > $1.publishedAt })
             }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
@@ -705,17 +713,29 @@ class FishingNewsViewModel: ObservableObject {
         return "\(place)_\(latStr)_\(lonStr)"
     }
 
-    private func makePlaceTokens(from placeName: String?) -> [String] {
-        guard let placeName, !placeName.isEmpty else { return [] }
-        // Split on commas and spaces, keep meaningful tokens
+private func makePlaceTokens(from placeName: String?, location: CLLocation?) -> [String] {
+    var tokens: [String] = []
+    if let placeName, !placeName.isEmpty {
         let rawTokens = placeName
             .components(separatedBy: CharacterSet(charactersIn: ", "))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        // Include the full place as first-class token
-        var tokens = [placeName]
+        tokens.append(placeName)
         tokens.append(contentsOf: rawTokens)
-        return Array(Set(tokens))
+    }
+    if isInNewSouthWales(location) {
+        tokens.append(contentsOf: [
+            "Clareville","Avalon","Bilgola","Newport","Mona Vale","Narrabeen","Collaroy",
+            "Dee Why","Manly","Palm Beach","Pittwater","Northern Beaches","Sydney","Hawkesbury"
+        ])
+    }
+    let stopwords: Set<String> = ["new","south","wales","australia","current","location"]
+    let cleaned = tokens
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .filter { $0.count >= 3 }
+        .filter { !stopwords.contains($0.lowercased()) }
+    return Array(Set(cleaned))
     }
 }
 
@@ -786,6 +806,12 @@ struct FishingNewsView: View {
         .cornerRadius(12)
                         }
 
+                        // Attribution
+                        Text("Powered by NewsAPI.org")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8)
+
                         // NSW: Show Tides4Fishing summary card below news
                         if isInNewSouthWales(locationManager.location) {
                             VStack(alignment: .leading, spacing: 10) {
@@ -828,6 +854,15 @@ struct FishingNewsView: View {
                             .cornerRadius(12)
                         }
                     }
+                }
+            } else if !viewModel.isLoading && viewModel.errorMessage == nil {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No fishing news found for your area in the last 30 days.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("Powered by NewsAPI.org")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
             }
         }

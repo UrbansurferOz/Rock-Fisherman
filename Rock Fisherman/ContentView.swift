@@ -66,15 +66,15 @@ struct ContentView: View {
             }
             .tag(2)
             
-            // Fishing Tips Tab
+            // Fishing News Tab
             NavigationView {
-                FishingTipsView()
-                    .navigationTitle("Fishing Tips")
+                FishingNewsView(locationManager: locationManager)
+                    .navigationTitle("Fishing News")
                     .navigationBarTitleDisplayMode(.large)
             }
             .tabItem {
-                Image(systemName: "fish")
-                Text("Tips")
+                Image(systemName: "newspaper")
+                Text("News")
             }
             .tag(3)
         }

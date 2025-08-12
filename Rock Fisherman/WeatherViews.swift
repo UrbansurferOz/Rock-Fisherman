@@ -1,4 +1,6 @@
 import SwiftUI
+import Combine
+import CoreLocation
 
 // MARK: - Current Weather View
 struct CurrentWeatherView: View {
@@ -523,79 +525,280 @@ struct DailyForecastView: View {
     }
 }
 
-// MARK: - Fishing Tips View
-struct FishingTipsView: View {
+// MARK: - Fishing News Models
+struct FishingArticle: Identifiable, Codable {
+    let id: UUID
+    let title: String
+    let description: String
+    let url: String
+    let publishedAt: Date
+    let source: String
+
+    init(id: UUID = UUID(), title: String, description: String, url: String, publishedAt: Date, source: String) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.url = url
+        self.publishedAt = publishedAt
+        self.source = source
+    }
+}
+
+// MARK: - NewsAPI.org Models
+private struct NewsAPIResponse: Codable {
+    let articles: [NewsAPIArticle]
+}
+
+private struct NewsAPIArticle: Codable {
+    let title: String?
+    let description: String?
+    let url: String?
+    let publishedAt: String?
+    let source: NewsAPISource?
+}
+
+private struct NewsAPISource: Codable { let name: String? }
+
+// MARK: - Fishing News ViewModel (with 1-hour cache)
+class FishingNewsViewModel: ObservableObject {
+    @Published var articles: [FishingArticle] = []
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String?
+
+    private let cachePrefix = "FishingNewsCache"
+    private let cacheExpiry: TimeInterval = 3600 // 1 hour
+    private var cancellables = Set<AnyCancellable>()
+
+    func fetchNews(for location: CLLocation?, placeName: String?) {
+        let locationKey = makeLocationKey(location: location, placeName: placeName)
+
+        // Serve cached if fresh
+        if let cached = loadCache(for: locationKey), !isCacheExpired(for: locationKey) {
+            self.articles = cached
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        let last30 = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        let isoFormatter = ISO8601DateFormatter()
+        let date30DaysAgo = isoFormatter.string(from: last30)
+
+        let placeTokens: [String] = makePlaceTokens(from: placeName)
+        let placeQuery: String = placeTokens.isEmpty ? "" : "(" + placeTokens.joined(separator: " OR ") + ")"
+        let baseTerms = "(fishing OR \"catch report\" OR \"fishing report\")"
+
+        // Heuristic query to bias toward local results; Bing doesn't support strict radius filters
+        let queryComponents = [placeQuery, baseTerms, "near", "within 50km", "after:\(date30DaysAgo)"]
+            .filter { !$0.isEmpty }
+        let query = queryComponents.joined(separator: " ")
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+
+        // NewsAPI.org configuration — load from environment first, then Info.plist
+        let envKey = ProcessInfo.processInfo.environment["YOUR_NEWSAPI_API_KEY"]
+        let plistKey = Bundle.main.object(forInfoDictionaryKey: "YOUR_NEWSAPI_API_KEY") as? String
+        let rawKey = (envKey?.isEmpty == false ? envKey : plistKey) ?? ""
+        let apiKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else {
+            self.isLoading = false
+            self.errorMessage = "Missing NewsAPI key. Add YOUR_NEWSAPI_API_KEY in the Scheme or Info.plist."
+            return
+        }
+        let dateParam = String(date30DaysAgo.prefix(10)) // yyyy-MM-dd
+        let urlString = "https://newsapi.org/v2/everything?q=\(encodedQuery)&from=\(dateParam)&language=en&sortBy=publishedAt&pageSize=25&searchIn=title,description"
+
+        guard let url = URL(string: urlString) else {
+            self.isLoading = false
+            self.errorMessage = "Invalid news URL"
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
+
+        URLSession.shared.dataTaskPublisher(for: request)
+            .map { $0.data }
+            .decode(type: NewsAPIResponse.self, decoder: JSONDecoder())
+            .map { response -> [FishingArticle] in
+                let isoDecoder = ISO8601DateFormatter()
+                let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+                let loweredTokens = Set(placeTokens.map { $0.lowercased() })
+
+                return response.articles.compactMap { doc in
+                    let title = doc.title ?? ""
+                    let description = doc.description ?? ""
+                    let url = doc.url
+                    let publishedStr = doc.publishedAt
+                    let source = doc.source?.name ?? "Unknown"
+
+                    guard let articleUrl = url, !title.isEmpty else { return nil }
+
+                    let published = (publishedStr.flatMap { isoDecoder.date(from: $0) }) ?? Date()
+                    guard published >= cutoff else { return nil }
+
+                    let titleLower = title.lowercased()
+                    let descLower = description.lowercased()
+                    // Keep results that mention at least one local token to bias local radius
+                    if !loweredTokens.isEmpty {
+                        let matchesLocal = loweredTokens.contains(where: { token in
+                            titleLower.contains(token) || descLower.contains(token)
+                        })
+                        if !matchesLocal { return nil }
+                    }
+
+                    return FishingArticle(
+                        title: title,
+                        description: description,
+                        url: articleUrl,
+                        publishedAt: published,
+                        source: source
+                    )
+                }
+                .sorted(by: { $0.publishedAt > $1.publishedAt })
+            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] completion in
+                guard let self = self else { return }
+                self.isLoading = false
+                if case let .failure(error) = completion {
+                    self.errorMessage = error.localizedDescription
+                }
+            } receiveValue: { [weak self] fetched in
+                guard let self = self else { return }
+                self.articles = fetched
+                self.saveCache(fetched, for: locationKey)
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Cache Helpers
+    private func cacheKey(for key: String) -> String { "\(cachePrefix)_\(key)" }
+    private func cacheTsKey(for key: String) -> String { "\(cacheKey(for: key))_timestamp" }
+
+    private func saveCache(_ articles: [FishingArticle], for key: String) {
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(articles) {
+            UserDefaults.standard.set(data, forKey: cacheKey(for: key))
+            UserDefaults.standard.set(Date(), forKey: cacheTsKey(for: key))
+        }
+    }
+
+    private func loadCache(for key: String) -> [FishingArticle]? {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey(for: key)) else { return nil }
+        let decoder = JSONDecoder()
+        return try? decoder.decode([FishingArticle].self, from: data)
+    }
+
+    private func isCacheExpired(for key: String) -> Bool {
+        guard let timestamp = UserDefaults.standard.object(forKey: cacheTsKey(for: key)) as? Date else { return true }
+        return Date().timeIntervalSince(timestamp) > cacheExpiry
+    }
+
+    // MARK: - Helpers
+    private func makeLocationKey(location: CLLocation?, placeName: String?) -> String {
+        let lat = location?.coordinate.latitude ?? 0
+        let lon = location?.coordinate.longitude ?? 0
+        let latStr = String(format: "%.2f", lat) // ~1km precision
+        let lonStr = String(format: "%.2f", lon)
+        let place = (placeName ?? "").lowercased().replacingOccurrences(of: " ", with: "_")
+        return "\(place)_\(latStr)_\(lonStr)"
+    }
+
+    private func makePlaceTokens(from placeName: String?) -> [String] {
+        guard let placeName, !placeName.isEmpty else { return [] }
+        // Split on commas and spaces, keep meaningful tokens
+        let rawTokens = placeName
+            .components(separatedBy: CharacterSet(charactersIn: ", "))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        // Include the full place as first-class token
+        var tokens = [placeName]
+        tokens.append(contentsOf: rawTokens)
+        return Array(Set(tokens))
+    }
+}
+
+// MARK: - Fishing News View
+struct FishingNewsView: View {
+    @ObservedObject var locationManager: LocationManager
+    @StateObject private var viewModel = FishingNewsViewModel()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Fishing Tips")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    FishingTipCard(
-                        title: "Best Time to Fish",
-                        description: "Early morning and late afternoon are typically the best times for fishing. Fish are more active during these periods.",
-                        icon: "clock.fill"
-                    )
-                    
-                    FishingTipCard(
-                        title: "Weather Conditions",
-                        description: "Overcast days with light rain can be excellent for fishing. Fish are more likely to be near the surface.",
-                        icon: "cloud.rain.fill"
-                    )
-                    
-                    FishingTipCard(
-                        title: "Wind Considerations",
-                        description: "Light to moderate winds can help by creating ripples that make fish less wary. Strong winds can make fishing difficult.",
-                        icon: "wind"
-                    )
-                    
-                    FishingTipCard(
-                        title: "Temperature Tips",
-                        description: "Fish are most active when water temperatures are between 10-25°C. Extreme temperatures can slow down fish activity.",
-                        icon: "thermometer"
-                    )
-                    
-                    FishingTipCard(
-                        title: "Tide and Current",
-                        description: "Fish often feed more actively during tide changes. Understanding local tide patterns can improve your success.",
-                        icon: "water.waves"
-                    )
+            HStack(spacing: 8) {
+                Image(systemName: "newspaper")
+                    .foregroundColor(.blue)
+                Text("Fishing News & Catch Reports")
+                    .font(.title2)
+                    .fontWeight(.bold)
+            }
+
+            if viewModel.isLoading {
+                ProgressView("Loading news...")
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+
+            if let message = viewModel.errorMessage, viewModel.articles.isEmpty {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            if !viewModel.articles.isEmpty {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(viewModel.articles) { article in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(article.title)
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+
+                                if !article.description.isEmpty {
+                                    Text(article.description)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                HStack(spacing: 4) {
+                                    Text("Source:")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(article.source)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text("•")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(article.publishedAt.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                if let url = URL(string: article.url) {
+                                    Link("Read more", destination: url)
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                        }
+                    }
                 }
             }
         }
         .padding()
-    }
-}
-
-// MARK: - Fishing Tip Card
-struct FishingTipCard: View {
-    let title: String
-    let description: String
-    let icon: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundColor(.blue)
-                
-                Text(title)
-                    .font(.headline)
-                
-                Spacer()
-            }
-            
-            Text(description)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.leading)
+        .onAppear {
+            viewModel.fetchNews(for: locationManager.location, placeName: locationManager.selectedLocationName)
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .onChange(of: locationManager.location) { _, _ in
+            viewModel.fetchNews(for: locationManager.location, placeName: locationManager.selectedLocationName)
+        }
+        .onChange(of: locationManager.selectedLocationName) { _, _ in
+            viewModel.fetchNews(for: locationManager.location, placeName: locationManager.selectedLocationName)
+        }
     }
 }
 

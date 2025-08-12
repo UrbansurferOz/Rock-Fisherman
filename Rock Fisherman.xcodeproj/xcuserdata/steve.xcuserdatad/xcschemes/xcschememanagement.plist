@@ -4,10 +4,30 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
-		<key>Rock Fisherman.xcscheme_^#shared#^_</key>
+		<key>Rock Fisherman.xcscheme</key>
 		<dict>
+			<key>isShown</key>
+			<true/>
 			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>AA71272D2E49747A009DF83C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>AA71273A2E49747F009DF83C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>AA7127442E49747F009DF83C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

@@ -17,7 +17,7 @@ A comprehensive iOS fishing weather app built with SwiftUI that provides real-ti
 - **Fishing condition scoring** based on weather parameters
 - **Optimal fishing indicators** for temperature, wind, and precipitation
 - **Visual fishing status** with color-coded conditions (Excellent, Good, Fair, Poor)
-- **Fishing tips and best practices** for different weather conditions
+- **Fishing news & live catch reports** (last 30 days, biased to ~50 km of selected location) with 1‑hour caching
 
 ### 📱 Modern iOS Design
 - **SwiftUI-based interface** following Apple's Human Interface Guidelines
@@ -98,6 +98,27 @@ Add your WorldTides key:
 1. In Xcode, open your target `Info` tab (or edit `Info.plist`).
 2. Add a String key named `WORLDTIDES_API_KEY` with your API key value.
 3. Build and run. The app will fetch hourly tide heights and daily extremes for the next 3 days.
+- News & Catch Reports (NewsAPI.org)
+  - Base URL: `https://newsapi.org/v2/everything`
+  - Requires API key (see below)
+
+Add your NewsAPI key (preferred: Scheme environment variable):
+1. In Xcode, select Product → Scheme → Edit Scheme…
+2. Select the Run action → Arguments tab.
+3. Under Environment Variables, add:
+   - Key: `YOUR_NEWSAPI_API_KEY`
+   - Value: your NewsAPI key
+4. Build and run. The app will load fishing news and catch reports for your selected location.
+
+Optional fallback (if you prefer Info.plist):
+1. Add a String key named `YOUR_NEWSAPI_API_KEY` with your API key value in `Info.plist`.
+2. The app reads the environment variable first, then falls back to `Info.plist`.
+
+Notes for NewsAPI:
+- Results are limited to the last 30 days and sorted by publish date.
+- Geographic radius filters aren’t available in NewsAPI; the app biases local results by including your selected place name tokens in the query and filters client‑side for relevance.
+- Responses are cached per‑location for 1 hour to reduce API usage and improve performance.
+
 
 Notes:
 - We request `heights&extremes&date=today&days=3&lat=<lat>&lon=<lon>&key=<key>`.
@@ -130,7 +151,7 @@ The app calculates fishing conditions based on:
 - `CurrentWeatherView` – Main weather display and wave conditions
 - `HourlyForecastView` – Single Grid with aligned columns (Time/Temp/Wind/Rain/Wave/Tide/Fish)
 - `DailyForecastView` – 7‑day summary including wave and tide extremes
-- `FishingTipCard` – Educational fishing tips
+- `FishingNewsView` – Fishing news and catch reports near the selected location (with 1‑hour caching)
 
 ### Design Principles
 - **Clarity**: Easy-to-read weather information

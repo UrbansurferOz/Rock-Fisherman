@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import CoreLocation
 import SwiftUI
 
@@ -331,6 +332,16 @@ class TideService {
         let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let plistKey = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = (envKey?.isEmpty == false ? envKey! : (plistKey?.isEmpty == false ? plistKey! : ""))
+        // Debug print of key (masked) + hash so the user can verify correctness
+        if !apiKey.isEmpty {
+            let head = String(apiKey.prefix(6))
+            let tail = String(apiKey.suffix(6))
+            let sha = SHA256.hash(data: Data(apiKey.utf8)).compactMap { String(format: "%02x", $0) }.joined()
+            print("WorldTides key (trimmed) len=\(apiKey.count) head=\(head)… tail=…\(tail) sha256=\(sha)")
+            if ProcessInfo.processInfo.environment["WORLDTIDES_LOG_FULL"] == "1" {
+                print("WorldTides key FULL=\(apiKey)")
+            }
+        }
         guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
 
         // Fetch hourly heights and extremes for 3 days starting today (UTC is fine; API returns ISO strings with offset)

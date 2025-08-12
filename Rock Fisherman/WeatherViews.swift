@@ -829,13 +829,13 @@ struct TideChartView: View {
                     }
 
                     // Right-side min/max labels
-                    VStack {
+                    VStack(alignment: .trailing, spacing: 2) {
                         Text(model.maxLabel).font(.caption2).foregroundStyle(.secondary)
                         Spacer()
                         Text(model.minLabel).font(.caption2).foregroundStyle(.secondary)
                     }
-                    .frame(width: 30)
-                    .position(x: rect.maxX + 15, y: rect.midY)
+                    .frame(width: 36)
+                    .position(x: rect.maxX + 18, y: rect.midY)
 
                     // Bottom hour labels
                     ForEach(model.vGrid, id: \.x) { tick in
@@ -906,7 +906,8 @@ private struct TideChartModel {
         let rawMin = windowed.map(\.1).min() ?? 0
         let rawMax = windowed.map(\.1).max() ?? 1
         let pad: Double = max(0.2, (rawMax - rawMin) * 0.15)
-        let yMin = max(0, floor((rawMin - pad) * 10) / 10)
+        // Include negatives if present so the curve never goes below the box
+        let yMin = floor((rawMin - pad) * 10) / 10
         let yMax = ceil((rawMax + pad) * 10) / 10
         let ySpan = max(0.1, yMax - yMin)
         dbg.append(String(format: "rawMin=%.2f rawMax=%.2f yMin=%.2f yMax=%.2f ySpan=%.2f", rawMin, rawMax, yMin, yMax, ySpan))
@@ -915,7 +916,8 @@ private struct TideChartModel {
             CGFloat(d.timeIntervalSince(start) / end.timeIntervalSince(start)) * rect.width + rect.minX
         }
         func yPos(_ h: Double) -> CGFloat {
-            rect.maxY - CGFloat((h - yMin) / ySpan) * rect.height
+            let hc = min(max(h, yMin), yMax)
+            return rect.maxY - CGFloat((hc - yMin) / ySpan) * rect.height
         }
 
         // 4) Build points and smooth path (Catmull–Rom to Bezier)

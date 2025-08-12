@@ -945,8 +945,9 @@ private struct TideChartModel {
         }
 
         // 3) Nice y-range with padding and rounding to 0.1m
-        let rawMin = windowed.map(\.1).min() ?? 0
-        let rawMax = windowed.map(\.1).max() ?? 1
+        // Use absolute tide heights so we never show negative values on the graph
+        let rawMin = windowed.map { abs($0.1) }.min() ?? 0
+        let rawMax = windowed.map { abs($0.1) }.max() ?? 1
         let pad: Double = max(0.2, (rawMax - rawMin) * 0.15)
         // Compute natural range then clamp the displayed minimum to 0 so labels are non-negative
         let yMinNatural = floor((rawMin - pad) * 10) / 10
@@ -959,7 +960,8 @@ private struct TideChartModel {
             CGFloat(d.timeIntervalSince(start) / end.timeIntervalSince(start)) * rect.width + rect.minX
         }
         func yPos(_ h: Double) -> CGFloat {
-            let hc = min(max(h, yMinDisplay), yMax)
+            let v = abs(h)
+            let hc = min(max(v, yMinDisplay), yMax)
             return rect.maxY - CGFloat((hc - yMinDisplay) / ySpanDisplay) * rect.height
         }
 
@@ -971,7 +973,7 @@ private struct TideChartModel {
         // 5) Current closest sample → dot
         if let nearest = windowed.min(by: { abs($0.0.timeIntervalSince(now)) < abs($1.0.timeIntervalSince(now)) }) {
             currentPoint = CGPoint(x: xPos(nearest.0), y: yPos(nearest.1))
-            dbg.append("nearest=\(nearest.0) h=\(String(format: "%.2f", nearest.1))")
+            dbg.append("nearest=\(nearest.0) hAbs=\(String(format: "%.2f", abs(nearest.1)))")
         } else {
             currentPoint = nil
         }

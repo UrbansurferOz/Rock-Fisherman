@@ -382,7 +382,7 @@ class TideService {
         }
 
         var decoded: WorldTidesCombined? = nil
-        if let url = buildURL(includeHeights: true, includeExtremes: true, days: 3) {
+        if let url = buildURL(includeHeights: true, includeExtremes: true, days: 7) {
             let (d, http) = try await request(url)
             if http.statusCode == 200 {
                 decoded = try? JSONDecoder().decode(WorldTidesCombined.self, from: d)
@@ -395,13 +395,13 @@ class TideService {
         if decoded == nil {
             var extremes: [WorldTideExtreme] = []
             var heights: [WorldTideHeight] = []
-            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: 3) {
+            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: 7) {
                 let (d1, http1) = try await request(u1)
                 if http1.statusCode == 200 {
                     if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d1) { extremes = tmp.extremes }
                 } else if let body = String(data: d1, encoding: .utf8) { print("WorldTides 400 body(extremes): \(body)") }
             }
-            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 3) {
+            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 7) {
                 let (d2, http2) = try await request(u2)
                 if http2.statusCode == 200 {
                     if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights }
@@ -431,9 +431,11 @@ class TideService {
         let outExtremes: [DailyTide] = byDay.keys.sorted().map { day in
             var highs = byDay[day]?.highs ?? []
             var lows = byDay[day]?.lows ?? []
-            // Keep up to 2 each, pick most extreme
             highs.sort { $0.height > $1.height }
             lows.sort { $0.height < $1.height }
+            // Ensure at least placeholders so UI stays consistent
+            if highs.isEmpty { highs = [] }
+            if lows.isEmpty { lows = [] }
             return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
         }
 

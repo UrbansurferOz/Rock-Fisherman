@@ -329,15 +329,17 @@ class TideService {
     // Requires Info.plist key: WORLDTIDES_API_KEY
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
         // Load from environment first, then Info.plist. Trim whitespace.
-        let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let plistKey = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let apiKey = (envKey?.isEmpty == false ? envKey! : (plistKey?.isEmpty == false ? plistKey! : ""))
+        let envKeyRaw = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
+        let plistKeyRaw = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
+        let combinedRaw = (envKeyRaw?.isEmpty == false ? envKeyRaw : plistKeyRaw) ?? ""
+        let trimmed = combinedRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKey = TideService.sanitizeKey(trimmed)
         // Debug print of key (masked) + hash so the user can verify correctness
         if !apiKey.isEmpty {
             let head = String(apiKey.prefix(6))
             let tail = String(apiKey.suffix(6))
             let sha = SHA256.hash(data: Data(apiKey.utf8)).compactMap { String(format: "%02x", $0) }.joined()
-            print("WorldTides key (trimmed) len=\(apiKey.count) head=\(head)… tail=…\(tail) sha256=\(sha)")
+            print("WorldTides key (trimmed) len=\(trimmed.count) sanitizedLen=\(apiKey.count) head=\(head)… tail=…\(tail) sha256=\(sha)")
             if ProcessInfo.processInfo.environment["WORLDTIDES_LOG_FULL"] == "1" {
                 print("WorldTides key FULL=\(apiKey)")
             }
@@ -440,6 +442,17 @@ class TideService {
             return String(base.prefix(16))
         }
         return String(iso.prefix(16))
+    }
+
+    private static func sanitizeKey(_ raw: String) -> String {
+        // Extract the first UUID-looking token. Many copy-paste issues add invisible chars; this recovers the key.
+        let pattern = "[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}"
+        if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+           let match = regex.firstMatch(in: raw, options: [], range: NSRange(location: 0, length: raw.utf16.count)),
+           let range = Range(match.range, in: raw) {
+            return String(raw[range])
+        }
+        return raw
     }
 }
 

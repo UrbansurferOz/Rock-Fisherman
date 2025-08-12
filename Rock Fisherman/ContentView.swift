@@ -38,7 +38,7 @@ struct ContentView: View {
             }
             .tabItem {
                 Image(systemName: "thermometer")
-                Text("Weather")
+                Text("Conditions")
             }
             .tag(0)
             

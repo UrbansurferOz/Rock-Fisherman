@@ -893,7 +893,7 @@ struct TideChartView: View {
         let next = items.filter { $0.0 >= now && $0.0 <= now.addingTimeInterval(24*3600) }
             .sorted { $0.0 < $1.0 }
             .prefix(4)
-            .map { (fmtOut.string(from: $0.0), $0.1, $0.2) }
+            .map { (fmtOut.string(from: $0.0), $0.1, max(0, $0.2)) }
         return next.isEmpty ? nil : Array(next)
     }
 }
@@ -948,18 +948,19 @@ private struct TideChartModel {
         let rawMin = windowed.map(\.1).min() ?? 0
         let rawMax = windowed.map(\.1).max() ?? 1
         let pad: Double = max(0.2, (rawMax - rawMin) * 0.15)
-        // Include negatives if present so the curve never goes below the box
-        let yMin = floor((rawMin - pad) * 10) / 10
+        // Compute natural range then clamp the displayed minimum to 0 so labels are non-negative
+        let yMinNatural = floor((rawMin - pad) * 10) / 10
         let yMax = ceil((rawMax + pad) * 10) / 10
-        let ySpan = max(0.1, yMax - yMin)
-        dbg.append(String(format: "rawMin=%.2f rawMax=%.2f yMin=%.2f yMax=%.2f ySpan=%.2f", rawMin, rawMax, yMin, yMax, ySpan))
+        let yMinDisplay = max(0, yMinNatural)
+        let ySpanDisplay = max(0.1, yMax - yMinDisplay)
+        dbg.append(String(format: "rawMin=%.2f rawMax=%.2f yMinNatural=%.2f yMinDisplay=%.2f yMax=%.2f span=%.2f", rawMin, rawMax, yMinNatural, yMinDisplay, yMax, ySpanDisplay))
 
         func xPos(_ d: Date) -> CGFloat {
             CGFloat(d.timeIntervalSince(start) / end.timeIntervalSince(start)) * rect.width + rect.minX
         }
         func yPos(_ h: Double) -> CGFloat {
-            let hc = min(max(h, yMin), yMax)
-            return rect.maxY - CGFloat((hc - yMin) / ySpan) * rect.height
+            let hc = min(max(h, yMinDisplay), yMax)
+            return rect.maxY - CGFloat((hc - yMinDisplay) / ySpanDisplay) * rect.height
         }
 
         // 4) Build points and smooth path (Catmull–Rom to Bezier)
@@ -982,8 +983,8 @@ private struct TideChartModel {
         yTicks = (0...4).map { i in
             let ratio = CGFloat(i) / 4
             let y = rect.maxY - ratio * rect.height
-            let value = yMin + Double(ratio) * ySpan
-            return YTick(y: y, label: String(format: "%.1fm", value))
+            let value = yMinDisplay + Double(ratio) * ySpanDisplay
+            return YTick(y: y, label: String(format: "%.1fm", max(0, value)))
         }
 
         // Vertical ticks every 3 hours, aligned to the previous whole 3-hour mark

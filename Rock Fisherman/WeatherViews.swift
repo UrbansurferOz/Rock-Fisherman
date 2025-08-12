@@ -761,31 +761,6 @@ struct TideChartView: View {
                 )
 
                 ZStack {
-                    if weatherService.hourlyTide.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("No tide samples loaded")
-                                .font(.caption).bold()
-                            if let note = weatherService.nearestWaveLocation {
-                                Text(note).font(.caption2).foregroundStyle(.secondary)
-                            }
-                            Text("Tip: ensure WORLDTIDES_API_KEY is set (Scheme → Run → Environment or Info.plist)")
-                                .font(.caption2).foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                    }
-                    // Debug overlay - prints when empty or on first build
-                    if model.smoothPath == nil || model.vGrid.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("TideChart Debug")
-                                .font(.caption).bold()
-                            ForEach(model.debugLines.prefix(8), id: \.self) { line in
-                                Text(line).font(.caption2).foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                    }
                     // Grid (horizontal 5 lines)
                     ForEach(model.hGrid, id: \.self) { y in
                         Path { p in
@@ -920,7 +895,6 @@ private struct TideChartModel {
 
     init(samples: [(Date, Double)], spanHours: Int, endAtNow: Bool, rect: CGRect) {
         var dbg: [String] = []
-        dbg.append("samples=\(samples.count) rect=(w=\(Int(rect.width)),h=\(Int(rect.height)))")
         let now = Date()
 
         // 1) Choose the 24h window (centered around "now" to look like the screenshot)
@@ -933,7 +907,7 @@ private struct TideChartModel {
             start = Calendar.current.date(byAdding: .hour, value: -spanHours/2, to: now) ?? now.addingTimeInterval(-43200)
             end   = Calendar.current.date(byAdding: .hour, value:  spanHours/2, to: now) ?? now.addingTimeInterval(43200)
         }
-        dbg.append("window=\(start) → \(end)")
+        
 
         // 2) Sample/clip to window and ensure chronological order
         let windowed = samples
@@ -942,7 +916,7 @@ private struct TideChartModel {
 
         // If we don't have enough points, bail safely
         guard windowed.count >= 2, rect.width > 1, rect.height > 1 else {
-            dbg.append("windowed=\(windowed.count) — insufficient points or rect too small")
+            
             smoothPath = nil
             currentPoint = nil
             currentHeight = nil
@@ -963,7 +937,7 @@ private struct TideChartModel {
         let yMax = ceil((rawMax + pad) * 10) / 10
         let yMinDisplay = max(0, yMinNatural)
         let ySpanDisplay = max(0.1, yMax - yMinDisplay)
-        dbg.append(String(format: "rawMin=%.2f rawMax=%.2f yMinNatural=%.2f yMinDisplay=%.2f yMax=%.2f span=%.2f", rawMin, rawMax, yMinNatural, yMinDisplay, yMax, ySpanDisplay))
+        
 
         func xPos(_ d: Date) -> CGFloat {
             CGFloat(d.timeIntervalSince(start) / end.timeIntervalSince(start)) * rect.width + rect.minX
@@ -975,14 +949,14 @@ private struct TideChartModel {
 
         // 4) Build points and smooth path (Catmull–Rom to Bezier)
         let pts: [CGPoint] = windowed.map { CGPoint(x: xPos($0.0), y: yPos($0.1)) }
-        dbg.append("points=\(pts.count)")
+        
         smoothPath = Path.catmullRomSpline(through: pts, alpha: 0.5)
 
         // 5) Current closest sample → dot
         if let nearest = windowed.min(by: { abs($0.0.timeIntervalSince(now)) < abs($1.0.timeIntervalSince(now)) }) {
             currentPoint = CGPoint(x: xPos(nearest.0), y: yPos(nearest.1))
             currentHeight = nearest.1
-            dbg.append("nearest=\(nearest.0) h=\(String(format: "%.2f", nearest.1))")
+            
         } else {
             currentPoint = nil
             currentHeight = nil

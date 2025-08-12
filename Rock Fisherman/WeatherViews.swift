@@ -574,6 +574,12 @@ private struct NewsAPIArticle: Codable {
 
 private struct NewsAPISource: Codable { let name: String? }
 
+private struct NewsAPIErrorResponse: Codable {
+    let status: String
+    let code: String?
+    let message: String?
+}
+
 // MARK: - Fishing News ViewModel (with 1-hour cache)
 class FishingNewsViewModel: ObservableObject {
     @Published var articles: [FishingArticle] = []
@@ -624,9 +630,18 @@ class FishingNewsViewModel: ObservableObject {
             return
         }
         let dateParam = String(date30DaysAgo.prefix(10)) // yyyy-MM-dd
-        let urlString = "https://newsapi.org/v2/everything?q=\(encodedQuery)&from=\(dateParam)&language=en&sortBy=publishedAt&pageSize=25&searchIn=title,description"
 
-        guard let url = URL(string: urlString) else {
+        var comps = URLComponents(string: "https://newsapi.org/v2/everything")!
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "from", value: dateParam),
+            URLQueryItem(name: "language", value: "en"),
+            URLQueryItem(name: "sortBy", value: "publishedAt"),
+            URLQueryItem(name: "pageSize", value: "25"),
+            URLQueryItem(name: "searchIn", value: "title,description")
+        ]
+
+        guard let url = comps.url else {
             self.isLoading = false
             self.errorMessage = "Invalid news URL"
             return
@@ -636,15 +651,14 @@ class FishingNewsViewModel: ObservableObject {
         request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
 
         URLSession.shared.dataTaskPublisher(for: request)
-            .map { $0.data }
-            .decode(type: NewsAPIResponse.self, decoder: JSONDecoder())
-            .map { response -> [FishingArticle] in
+            .tryMap { data, _ -> [FishingArticle] in
                 let isoDecoder = ISO8601DateFormatter()
                 let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
                 let loweredTokens = Set(placeTokens.map { $0.lowercased() })
 
-                func mapArticles(filterLocal: Bool) -> [FishingArticle] {
-                    response.articles.compactMap { doc in
+                if let response = try? JSONDecoder().decode(NewsAPIResponse.self, from: data) {
+                    func mapArticles(filterLocal: Bool) -> [FishingArticle] {
+                        response.articles.compactMap { doc in
                         let title = doc.title ?? ""
                         let description = doc.description ?? ""
                         let url = doc.url
@@ -672,13 +686,21 @@ class FishingNewsViewModel: ObservableObject {
                             publishedAt: published,
                             source: source
                         )
+                        }
                     }
+
+                    let local = mapArticles(filterLocal: true)
+                    if !local.isEmpty { return local.sorted(by: { $0.publishedAt > $1.publishedAt }) }
+                    let fallback = mapArticles(filterLocal: false)
+                    return fallback.sorted(by: { $0.publishedAt > $1.publishedAt })
                 }
 
-                let local = mapArticles(filterLocal: true)
-                if !local.isEmpty { return local.sorted(by: { $0.publishedAt > $1.publishedAt }) }
-                let fallback = mapArticles(filterLocal: false)
-                return fallback.sorted(by: { $0.publishedAt > $1.publishedAt })
+                if let err = try? JSONDecoder().decode(NewsAPIErrorResponse.self, from: data) {
+                    let msg = err.message ?? err.code ?? "NewsAPI error"
+                    throw NSError(domain: "NewsAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+                }
+
+                throw NSError(domain: "NewsAPI", code: -2, userInfo: [NSLocalizedDescriptionKey: "Unexpected response"])
             }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in

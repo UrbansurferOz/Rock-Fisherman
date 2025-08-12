@@ -273,17 +273,11 @@ struct HourlyForecastView: View {
                         .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
                         .frame(width: colTime, alignment: .leading)
 
-                    Text("Cloud")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .allowsTightening(true)
-                        .frame(width: colIcon, alignment: .leading)
-
-                    Text("Temp")
+                    // Weather spans cloud icon + temperature columns
+                    Text("Weather")
                         .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .frame(width: colTemp, alignment: .leading)
+                        .frame(width: colIcon + colTemp, alignment: .leading)
+                        .gridCellColumns(2)
 
                     Text("High\nTide")
                         .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)

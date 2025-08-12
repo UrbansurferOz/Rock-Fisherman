@@ -234,7 +234,9 @@ class WeatherService: ObservableObject {
         guard !hourlyTide.isEmpty else { return }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
-        let tideDict: [String: Double] = Dictionary(uniqueKeysWithValues: hourlyTide.map { ($0.time, $0.height) })
+        // Build dictionary safely even if provider returns duplicate timestamps
+        var tideDict: [String: Double] = [:]
+        for sample in hourlyTide { tideDict[sample.time] = sample.height }
         for i in 0..<hourlyForecast.count {
             let key = hourlyForecast[i].time
             if let h = tideDict[key] {
@@ -438,11 +440,15 @@ class TideService {
     }
 
     private static func normalizeISOMinute(_ iso: String) -> String {
-        // Convert ISO with offset → trim to minute, keep local time string if possible
+        // Trim timezone offset ONLY if it appears after the 'T'.
         // Example: 2025-04-06T12:30+10:00 → 2025-04-06T12:30
-        if let idx = iso.firstIndex(of: "+") ?? iso.firstIndex(of: "-") {
-            let base = String(iso[..<idx])
-            return String(base.prefix(16))
+        if let tIdx = iso.firstIndex(of: "T") {
+            let afterT = iso.index(after: tIdx)..<iso.endIndex
+            let tail = iso[afterT]
+            if let plus = tail.firstIndex(of: "+") ?? tail.firstIndex(of: "-") {
+                let base = String(iso[..<plus])
+                return String(base.prefix(16))
+            }
         }
         return String(iso.prefix(16))
     }

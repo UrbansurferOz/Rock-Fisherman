@@ -503,8 +503,8 @@ struct DailyForecastView: View {
                                                     .lineLimit(1)
                                             }
                                             Text("  ")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
                                             Image(systemName: "arrow.down")
                                                 .font(.caption2)
                                                 .foregroundColor(.teal)
@@ -516,8 +516,8 @@ struct DailyForecastView: View {
                                                     .lineLimit(1)
                                             }
                                         }
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.75)
                                     }
@@ -606,56 +606,62 @@ class FishingNewsViewModel: ObservableObject {
         let isoFormatter = ISO8601DateFormatter()
         let date30DaysAgo = isoFormatter.string(from: last30)
 
-        let placeTokens: [String] = makePlaceTokens(from: placeName, location: location)
-        let placeQuery: String = placeTokens.isEmpty ? "" : "(" + placeTokens.joined(separator: " OR ") + ")"
-        let baseTerms = "(fishing OR \"catch report\" OR \"fishing report\")"
+		let placeTokens: [String] = makePlaceTokens(from: placeName, location: location)
+		let limitedTokens = Array(placeTokens.prefix(8))
+		let baseTerms = "fishing"
 
-        // Heuristic query to bias toward local results. NewsAPI doesn't support radius filters.
-        let query: String
-        if placeQuery.isEmpty {
-            query = baseTerms
-        } else {
-            query = "\(placeQuery) AND \(baseTerms)"
-        }
-        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+		// Heuristic query to bias toward local results with built-in NSW fallbacks
+		var localityClause = limitedTokens.isEmpty ? "" : "(" + limitedTokens.joined(separator: " OR ") + ")"
+		if isInNewSouthWales(location) {
+			let nsf = "(Sydney OR \"Northern Beaches\" OR NSW OR \"New South Wales\" OR Australia)"
+			localityClause = localityClause.isEmpty ? nsf : "(\(localityClause) OR \(nsf))"
+		}
+		let query = localityClause.isEmpty ? baseTerms : "\(localityClause) AND \(baseTerms)"
+		let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
 
         // NewsAPI.org configuration — load from environment first, then Info.plist
         let envKey = ProcessInfo.processInfo.environment["YOUR_NEWSAPI_API_KEY"]
         let plistKey = Bundle.main.object(forInfoDictionaryKey: "YOUR_NEWSAPI_API_KEY") as? String
         let rawKey = (envKey?.isEmpty == false ? envKey : plistKey) ?? ""
         let apiKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+		#if DEBUG
+		let envKeyLen = ProcessInfo.processInfo.environment["YOUR_NEWSAPI_API_KEY"]?.count ?? 0
+		let plistKeyLen = (Bundle.main.object(forInfoDictionaryKey: "YOUR_NEWSAPI_API_KEY") as? String)?.count ?? 0
+		let masked = apiKey.isEmpty ? "(empty)" : (String(apiKey.prefix(4)) + "…" + String(apiKey.suffix(4)))
+		print("NewsAPI: envLen=\(envKeyLen) plistLen=\(plistKeyLen) usingKey=\(masked)")
+		#endif
         guard !apiKey.isEmpty else {
             self.isLoading = false
             self.errorMessage = "Missing NewsAPI key. Add YOUR_NEWSAPI_API_KEY in the Scheme or Info.plist."
             return
         }
-        #if DEBUG
-        let masked = apiKey.isEmpty ? "(empty)" : (String(apiKey.prefix(4)) + "…" + String(apiKey.suffix(4)))
-        print("NewsAPI: Using key=\(masked), placeTokens=\(placeTokens)")
-        #endif
         let dateParam = String(date30DaysAgo.prefix(10)) // yyyy-MM-dd
 
         var comps = URLComponents(string: "https://newsapi.org/v2/everything")!
-        comps.queryItems = [
+		comps.queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "from", value: dateParam),
             URLQueryItem(name: "language", value: "en"),
             URLQueryItem(name: "sortBy", value: "publishedAt"),
-            URLQueryItem(name: "pageSize", value: "25"),
-            URLQueryItem(name: "searchIn", value: "title,description")
+			URLQueryItem(name: "pageSize", value: "50")
         ]
 
-        guard let url = comps.url else {
+		guard let url = comps.url else {
             self.isLoading = false
             self.errorMessage = "Invalid news URL"
             return
         }
-        #if DEBUG
-        print("NewsAPI URL: \(url.absoluteString)")
-        #endif
+		#if DEBUG
+		print("NewsAPI: query=\(query)")
+		print("NewsAPI URL: \(url.absoluteString)")
+		#endif
 
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
+		var request = URLRequest(url: url)
+		request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
+		#if DEBUG
+		let maskedForHeader = apiKey.isEmpty ? "(empty)" : (String(apiKey.prefix(4)) + "…" + String(apiKey.suffix(4)))
+		print("NewsAPI: set header X-Api-Key=\(maskedForHeader)")
+		#endif
 
         URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { data, _ -> [FishingArticle] in
@@ -696,10 +702,26 @@ class FishingNewsViewModel: ObservableObject {
                         }
                     }
 
+                    // Try: local filter → unfiltered → broader backup term set
                     let local = mapArticles(filterLocal: true)
                     if !local.isEmpty { return local.sorted(by: { $0.publishedAt > $1.publishedAt }) }
                     let fallback = mapArticles(filterLocal: false)
-                    return fallback.sorted(by: { $0.publishedAt > $1.publishedAt })
+                    if !fallback.isEmpty { return fallback.sorted(by: { $0.publishedAt > $1.publishedAt }) }
+                    // Build a broader set on the fly if empty
+                    let backupTokens = ["fishing report","catch","angler","snapper","bream","salmon","flathead","whiting","rock fishing"]
+                    let broadened = response.articles.compactMap { doc -> FishingArticle? in
+                        let title = doc.title ?? ""
+                        let desc = doc.description ?? ""
+                        let url = doc.url
+                        let publishedStr = doc.publishedAt
+                        guard let articleUrl = url, !title.isEmpty else { return nil }
+                        let published = (publishedStr.flatMap { isoDecoder.date(from: $0) }) ?? Date()
+                        guard published >= cutoff else { return nil }
+                        let text = (title + " " + desc).lowercased()
+                        guard backupTokens.contains(where: { text.contains($0) }) else { return nil }
+                        return FishingArticle(title: title, description: desc, url: articleUrl, publishedAt: published, source: doc.source?.name ?? "Unknown")
+                    }
+                    return broadened.sorted(by: { $0.publishedAt > $1.publishedAt })
                 }
 
                 if let err = try? JSONDecoder().decode(NewsAPIErrorResponse.self, from: data) {
@@ -709,23 +731,23 @@ class FishingNewsViewModel: ObservableObject {
 
                 throw NSError(domain: "NewsAPI", code: -2, userInfo: [NSLocalizedDescriptionKey: "Unexpected response"])
             }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] completion in
+			.receive(on: DispatchQueue.main)
+			.sink { [weak self] completion in
                 guard let self = self else { return }
                 self.isLoading = false
-                if case let .failure(error) = completion {
+				if case let .failure(error) = completion {
                     self.errorMessage = error.localizedDescription
-                    #if DEBUG
-                    print("NewsAPI failure: \(error.localizedDescription)")
-                    #endif
+					#if DEBUG
+					print("NewsAPI failure: \(error.localizedDescription)")
+					#endif
                 }
-            } receiveValue: { [weak self] fetched in
+			} receiveValue: { [weak self] fetched in
                 guard let self = self else { return }
                 self.articles = fetched
-                #if DEBUG
-                print("NewsAPI fetched articles: \(fetched.count)")
-                if fetched.isEmpty { print("NewsAPI: No articles after fallback; query=\(query)") }
-                #endif
+				#if DEBUG
+				print("NewsAPI fetched articles: \(fetched.count)")
+				if fetched.isEmpty { print("NewsAPI: No articles after fallback; query=\(query)") }
+				#endif
                 self.saveCache(fetched, for: locationKey)
             }
             .store(in: &cancellables)
@@ -780,7 +802,7 @@ private func makePlaceTokens(from placeName: String?, location: CLLocation?) -> 
             "Dee Why","Manly","Palm Beach","Pittwater","Northern Beaches","Sydney","Hawkesbury"
         ])
     }
-    let stopwords: Set<String> = ["new","south","wales","australia","current","location"]
+	let stopwords: Set<String> = ["new","south","wales","current","location"]
     let cleaned = tokens
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
@@ -822,7 +844,7 @@ struct FishingNewsView: View {
                         ForEach(viewModel.articles) { article in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(article.title)
-                                    .font(.headline)
+                    .font(.headline)
                                     .foregroundColor(.primary)
 
                                 if !article.description.isEmpty {
@@ -874,8 +896,8 @@ struct FishingNewsView: View {
                                 }
 
                                 Text("Key data available for Sydney on Tides4Fishing:")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
 
                                 VStack(alignment: .leading, spacing: 6) {
                                     Label("Tides: daily high/low times, tidal coefficients, tables", systemImage: "clock")
@@ -899,10 +921,10 @@ struct FishingNewsView: View {
                                 Text("Source: Tides4Fishing (Sydney, NSW)")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
-                            }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
                         }
                     }
                 }

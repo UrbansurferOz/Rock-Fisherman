@@ -615,7 +615,7 @@ class FishingNewsViewModel: ObservableObject {
 		if isInNewSouthWales(location) {
 			localityClause.append(contentsOf: [
 				"Sydney","Northern Beaches","Pittwater","Manly","Dee Why","Narrabeen","Newport","Avalon",
-				"Bilgola","Mona Vale","Palm Beach","NSW","New South Wales","Australia"
+				"Bilgola","Mona Vale","Palm Beach","Australia"
 			])
 		}
 		if isInVictoria(location) || (placeName ?? "").localizedCaseInsensitiveContains("Melbourne") || (placeName ?? "").localizedCaseInsensitiveContains("Victoria") {
@@ -818,12 +818,24 @@ class FishingNewsViewModel: ObservableObject {
 private func makePlaceTokens(from placeName: String?, location: CLLocation?) -> [String] {
     var tokens: [String] = []
     if let placeName, !placeName.isEmpty {
-        let rawTokens = placeName
-            .components(separatedBy: CharacterSet(charactersIn: ", "))
+        // Normalize to "City, Country" by stripping any state-like middle part
+        // Examples:
+        // - "Sydney, NSW, Australia" -> ["Sydney", "Australia"]
+        // - "Sydney, Australia" -> ["Sydney", "Australia"]
+        let parts = placeName
+            .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        tokens.append(placeName)
-        tokens.append(contentsOf: rawTokens)
+        var city: String? = nil
+        var country: String? = nil
+        if parts.count >= 2 {
+            city = parts.first
+            country = parts.last
+        } else if parts.count == 1 {
+            city = parts[0]
+        }
+        if let c = city { tokens.append(c) }
+        if let ctry = country { tokens.append(ctry) }
     }
     if isInNewSouthWales(location) {
         tokens.append(contentsOf: [

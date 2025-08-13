@@ -608,12 +608,12 @@ class FishingNewsViewModel: ObservableObject {
 
 		let placeTokens: [String] = makePlaceTokens(from: placeName, location: location)
 		let limitedTokens = Array(placeTokens.prefix(8))
-		let baseTerms = "fishing"
+		let baseTerms = "(fishing OR angler OR fisherman OR \"fishing report\" OR \"catch report\" OR \"live report\" OR \"fishing competition\" OR \"bag limit\" OR \"NSW Fisheries\" OR snapper OR bream OR flathead OR whiting OR kingfish OR salmon)"
 
 		// Heuristic query to bias toward local results with built-in NSW fallbacks
 		var localityClause = limitedTokens.isEmpty ? "" : "(" + limitedTokens.joined(separator: " OR ") + ")"
 		if isInNewSouthWales(location) {
-			let nsf = "(Sydney OR \"Northern Beaches\" OR NSW OR \"New South Wales\" OR Australia)"
+			let nsf = "(Sydney OR \"Northern Beaches\" OR \"Pittwater\" OR Manly OR \"Dee Why\" OR Narrabeen OR Newport OR Avalon OR Bilgola OR \"Mona Vale\" OR \"Palm Beach\" OR NSW OR \"New South Wales\" OR Australia)"
 			localityClause = localityClause.isEmpty ? nsf : "(\(localityClause) OR \(nsf))"
 		}
 		let query = localityClause.isEmpty ? baseTerms : "\(localityClause) AND \(baseTerms)"
@@ -637,13 +637,14 @@ class FishingNewsViewModel: ObservableObject {
         }
         let dateParam = String(date30DaysAgo.prefix(10)) // yyyy-MM-dd
 
-        var comps = URLComponents(string: "https://newsapi.org/v2/everything")!
+		var comps = URLComponents(string: "https://newsapi.org/v2/everything")!
 		comps.queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "from", value: dateParam),
             URLQueryItem(name: "language", value: "en"),
             URLQueryItem(name: "sortBy", value: "publishedAt"),
-			URLQueryItem(name: "pageSize", value: "50")
+			URLQueryItem(name: "pageSize", value: "100"),
+			URLQueryItem(name: "searchIn", value: "title,description,content")
         ]
 
 		guard let url = comps.url else {
@@ -708,7 +709,7 @@ class FishingNewsViewModel: ObservableObject {
                     let fallback = mapArticles(filterLocal: false)
                     if !fallback.isEmpty { return fallback.sorted(by: { $0.publishedAt > $1.publishedAt }) }
                     // Build a broader set on the fly if empty
-                    let backupTokens = ["fishing report","catch","angler","snapper","bream","salmon","flathead","whiting","rock fishing"]
+                    let backupTokens = ["fishing","fishing report","catch","angler","snapper","bream","salmon","flathead","whiting","kingfish","rock fishing","Sydney","Northern Beaches","Pittwater","NSW"]
                     let broadened = response.articles.compactMap { doc -> FishingArticle? in
                         let title = doc.title ?? ""
                         let desc = doc.description ?? ""

@@ -690,6 +690,12 @@ class FishingNewsViewModel: ObservableObject {
                 let isoDecoder = ISO8601DateFormatter()
                 let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
                 let loweredTokens = Set(placeTokens.map { $0.lowercased() })
+                // Focus locality matching on city/suburb tokens; ignore generic country/state tokens
+                let adminStop: Set<String> = [
+                    "australia","nsw","new south wales","vic","victoria","qld","queensland",
+                    "sa","south australia","wa","western australia","tas","tasmania","act"
+                ]
+                let focusTokens = loweredTokens.subtracting(adminStop)
 
                 if let response = try? JSONDecoder().decode(NewsAPIResponse.self, from: data) {
                     func mapArticles(filterLocal: Bool) -> [FishingArticle] {
@@ -708,7 +714,8 @@ class FishingNewsViewModel: ObservableObject {
                         let titleLower = title.lowercased()
                         let descLower = description.lowercased()
                         if filterLocal, !loweredTokens.isEmpty {
-                            let matchesLocal = loweredTokens.contains(where: { token in
+                            let basis = focusTokens.isEmpty ? loweredTokens : focusTokens
+                            let matchesLocal = basis.contains(where: { token in
                                 titleLower.contains(token) || descLower.contains(token)
                             })
                             if !matchesLocal { return nil }

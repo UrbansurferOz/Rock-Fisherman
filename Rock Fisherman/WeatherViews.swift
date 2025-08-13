@@ -607,16 +607,25 @@ class FishingNewsViewModel: ObservableObject {
         let date30DaysAgo = isoFormatter.string(from: last30)
 
 		let placeTokens: [String] = makePlaceTokens(from: placeName, location: location)
-		let limitedTokens = Array(placeTokens.prefix(8))
+		let limitedTokens = Array(placeTokens.prefix(12))
 		let baseTerms = "(fishing OR angler OR fisherman OR \"fishing report\" OR \"catch report\" OR \"live report\" OR \"fishing competition\" OR \"bag limit\" OR \"NSW Fisheries\" OR snapper OR bream OR flathead OR whiting OR kingfish OR salmon)"
 
 		// Heuristic query to bias toward local results with built-in NSW fallbacks
-		var localityClause = limitedTokens.isEmpty ? "" : "(" + limitedTokens.joined(separator: " OR ") + ")"
+		var localityClause = limitedTokens
 		if isInNewSouthWales(location) {
-			let nsf = "(Sydney OR \"Northern Beaches\" OR \"Pittwater\" OR Manly OR \"Dee Why\" OR Narrabeen OR Newport OR Avalon OR Bilgola OR \"Mona Vale\" OR \"Palm Beach\" OR NSW OR \"New South Wales\" OR Australia)"
-			localityClause = localityClause.isEmpty ? nsf : "(\(localityClause) OR \(nsf))"
+			localityClause.append(contentsOf: [
+				"Sydney","Northern Beaches","Pittwater","Manly","Dee Why","Narrabeen","Newport","Avalon",
+				"Bilgola","Mona Vale","Palm Beach","NSW","New South Wales","Australia"
+			])
 		}
-		let query = localityClause.isEmpty ? baseTerms : "\(localityClause) AND \(baseTerms)"
+		if isInVictoria(location) || (placeName ?? "").localizedCaseInsensitiveContains("Melbourne") || (placeName ?? "").localizedCaseInsensitiveContains("Victoria") {
+			localityClause.append(contentsOf: [
+				"Melbourne","Victoria","VIC","Port Phillip Bay","Port Phillip","Western Port","St Kilda",
+				"Mornington","Frankston","Mordialloc","Brighton","Queenscliff","Sorrento","Gippsland","Williamstown"
+			])
+		}
+		let orList = localityClause.isEmpty ? "" : localityClause.joined(separator: " OR ")
+		let query = orList.isEmpty ? baseTerms : "\(baseTerms) (\(orList))"
 		let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
 
         // NewsAPI.org configuration — load from environment first, then Info.plist
@@ -642,7 +651,7 @@ class FishingNewsViewModel: ObservableObject {
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "from", value: dateParam),
             URLQueryItem(name: "language", value: "en"),
-            URLQueryItem(name: "sortBy", value: "publishedAt"),
+			URLQueryItem(name: "sortBy", value: "relevancy"),
 			URLQueryItem(name: "pageSize", value: "100"),
 			URLQueryItem(name: "searchIn", value: "title,description,content")
         ]
@@ -960,6 +969,14 @@ private func isInNewSouthWales(_ location: CLLocation?) -> Bool {
     let lat = loc.coordinate.latitude
     let lon = loc.coordinate.longitude
     return (lat >= -37.6 && lat <= -28.0) && (lon >= 141.0 && lon <= 154.1)
+}
+
+private func isInVictoria(_ location: CLLocation?) -> Bool {
+    guard let loc = location else { return false }
+    // Rough VIC bounding box
+    let lat = loc.coordinate.latitude
+    let lon = loc.coordinate.longitude
+    return (lat >= -39.2 && lat <= -33.8) && (lon >= 140.7 && lon <= 150.1)
 }
 
 // MARK: - Wave Info View

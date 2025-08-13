@@ -82,29 +82,23 @@ struct ContentView: View {
             // First run: require an explicit user selection
             // Subsequent runs: use the last selected location (persisted by LocationManager)
             if !hasShownInitialLocationSelection && !locationManager.hasSelectedLocation {
-                print("ContentView.onAppear: Showing location selection (require explicit selection)")
                 showingLocationSelection = true
                 hasShownInitialLocationSelection = true
                 return
             }
             if let location = locationManager.location {
-                print("ContentView.onAppear: Using previously selected location; fetching weather")
                 Task { await weatherService.fetchWeather(for: location) }
             }
         }
         .onChange(of: locationManager.hasSelectedLocation) { oldValue, hasSelected in
-            print("ContentView.onChange hasSelectedLocation: \(oldValue) -> \(hasSelected)")
             if hasSelected {
                 // Location has been selected, close the selection view
-                print("ContentView: Closing location selection (hasSelectedLocation changed)")
                 showingLocationSelection = false
             }
         }
         .onChange(of: locationManager.location) { oldLocation, newLocation in
-            print("ContentView.onChange location: \(oldLocation?.coordinate.latitude ?? 0) -> \(newLocation?.coordinate.latitude ?? 0)")
             if let location = newLocation, locationManager.hasSelectedLocation {
                 // When location changes, ensure location selection is closed
-                print("ContentView: Closing location selection (location changed)")
                 showingLocationSelection = false
                 
                 Task {

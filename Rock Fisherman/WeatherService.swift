@@ -28,13 +28,11 @@ class WeatherService: ObservableObject {
             errorMessage = nil
         }
         
-        // Fetch weather data
-        await fetchWeatherData(for: location)
-        
-        // Fetch wave data
-        await fetchWaveData(for: location)
-        // Fetch tides
-        await fetchTideData(for: location)
+        // Fetch all providers in parallel to minimize total latency
+        async let weatherTask: Void = fetchWeatherData(for: location)
+        async let waveTask: Void = fetchWaveData(for: location)
+        async let tideTask: Void = fetchTideData(for: location)
+        _ = await (weatherTask, waveTask, tideTask)
         
         // Merge wave data with forecasts after both are fetched
         await MainActor.run {
@@ -119,11 +117,9 @@ class WeatherService: ObservableObject {
     private func fetchTideData(for location: CLLocation) async {
         let tideService = TideService()
         // Pre-flight diagnostics: log whether env/plist key is visible to the process
-        let envKeyLen = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]?.count ?? 0
-        let plistKeyLen = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.count ?? 0
-        print("Tide key visibility: envLen=\(envKeyLen) plistLen=\(plistKeyLen)")
+        // Debug logs removed
         do {
-            print("Fetching tides for lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude)")
+            // Debug logs removed
             let (heights, extremes, notice) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
             await MainActor.run {
                 self.hourlyTide = heights
@@ -139,17 +135,17 @@ class WeatherService: ObservableObject {
                         let plistKey = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                         let envInfo = envKey == nil ? "nil" : "len=\(envKey!.count)"
                         let plistInfo = plistKey == nil ? "nil" : "len=\(plistKey!.count)"
-                        print("Tide fetch failed: key missing after trim. env=\(envInfo) plist=\(plistInfo)")
+                        // Debug logs removed
                         self.nearestWaveLocation = "Tide data unavailable (missing API key). Add WORLDTIDES_API_KEY in Scheme or Info.plist."
                     case .http(let code):
-                        print("Tide fetch HTTP error: \(code)")
+                        // Debug logs removed
                         self.nearestWaveLocation = "Tide service HTTP \(code)"
                     case .decode(let msg):
-                        print("Tide decode error: \(msg)")
+                        // Debug logs removed
                         self.nearestWaveLocation = "Tide data format error"
                     }
                 } else {
-                    print("Tide fetch failed: \(error.localizedDescription)")
+                    // Debug logs removed
                 }
                 self.hourlyTide = []
                 self.dailyTideExtremes = []
@@ -338,15 +334,7 @@ class TideService {
         let trimmed = combinedRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = TideService.sanitizeKey(trimmed)
         // Debug print of key (masked) + hash so the user can verify correctness
-        if !apiKey.isEmpty {
-            let head = String(apiKey.prefix(6))
-            let tail = String(apiKey.suffix(6))
-            let sha = SHA256.hash(data: Data(apiKey.utf8)).compactMap { String(format: "%02x", $0) }.joined()
-            print("WorldTides key (trimmed) len=\(trimmed.count) sanitizedLen=\(apiKey.count) head=\(head)… tail=…\(tail) sha256=\(sha)")
-            if ProcessInfo.processInfo.environment["WORLDTIDES_LOG_FULL"] == "1" {
-                print("WorldTides key FULL=\(apiKey)")
-            }
-        }
+        // Debug logs removed
         guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
 
         // Fetch hourly heights and extremes for 3 days starting today (UTC is fine; API returns ISO strings with offset)
@@ -386,8 +374,6 @@ class TideService {
             let (d, http) = try await request(url)
             if http.statusCode == 200 {
                 decoded = try? JSONDecoder().decode(WorldTidesCombined.self, from: d)
-            } else {
-                if let body = String(data: d, encoding: .utf8) { print("WorldTides 400 body(combined): \(body)") }
             }
         }
 
@@ -399,13 +385,13 @@ class TideService {
                 let (d1, http1) = try await request(u1)
                 if http1.statusCode == 200 {
                     if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d1) { extremes = tmp.extremes }
-                } else if let body = String(data: d1, encoding: .utf8) { print("WorldTides 400 body(extremes): \(body)") }
+                }
             }
             if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 7) {
                 let (d2, http2) = try await request(u2)
                 if http2.statusCode == 200 {
                     if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights }
-                } else if let body = String(data: d2, encoding: .utf8) { print("WorldTides 400 body(heights): \(body)") }
+                }
             }
             decoded = WorldTidesCombined(heights: heights, extremes: extremes, copyright: nil)
         }

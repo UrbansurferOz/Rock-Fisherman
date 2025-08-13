@@ -321,13 +321,13 @@ struct LocationSearchView: View {
     }
     
     private func selectLocation(_ location: LocationResult) {
-        print("Selecting location: \(location.name) at (\(location.coordinate.latitude), \(location.coordinate.longitude))")
+        // Debug logs removed
         
         let clLocation = CLLocation(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
         
         locationManager.setLocation(clLocation, name: location.displayName)
         
-        print("Location set in manager. hasSelectedLocation: \(locationManager.hasSelectedLocation)")
+        // Debug logs removed
         
         Task {
             await weatherService.fetchWeather(for: clLocation)
@@ -336,9 +336,7 @@ struct LocationSearchView: View {
         // Close both the search view and the main location selection view
         isPresented = false
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            print("Closing location selection view")
-        }
+        // Debug logs removed
     }
     
     private var popularLocations: [LocationResult] {

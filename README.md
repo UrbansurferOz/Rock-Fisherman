@@ -17,7 +17,7 @@ A comprehensive iOS fishing weather app built with SwiftUI that provides real-ti
 - **Fishing condition scoring** based on weather parameters
 - **Optimal fishing indicators** for temperature, wind, and precipitation
 - **Visual fishing status** with color-coded conditions (Excellent, Good, Fair, Poor)
-- **Fishing news & live catch reports** (last 30 days, biased to ~50 km of selected location) with 1‑hour caching
+- **Fishing news & live catch reports** (last 30 days, biased to ~50 km of selected location) with 1‑hour caching (no external debug logging)
 
 ### 📱 Modern iOS Design
 - **SwiftUI-based interface** following Apple's Human Interface Guidelines
@@ -34,6 +34,7 @@ The app follows modern iOS development patterns:
 - **Async/await** for modern concurrency handling
 - **Core Location** for location services
 - **MapKit** (LocalSearch + Completer) for country‑aware location search with AU bias
+- **Optimized concurrency**: weather, marine, and tide API calls run in parallel for faster loads
 - **Combine** for debounced search
 - **URLSession** for network requests
 - **Modular design** with separate services and view components
@@ -121,6 +122,10 @@ Notes for NewsAPI:
 - Responses are cached per‑location for 1 hour to reduce API usage and improve performance.
 
 Note: The previous Azure/Bing-powered news section has been removed while we evaluate alternative providers.
+
+### Performance & Logging
+- All weather, wave and tide requests run concurrently to minimize total load time.
+- Development-only debug logs have been removed for production builds to reduce console noise and improve performance.
 
 
 Notes:

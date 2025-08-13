@@ -30,7 +30,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             self.isLoading = true
 
             guard CLLocationManager.locationServicesEnabled() else {
-                print("LocationManager: Location services are disabled")
+                // Debug logs removed
                 self.isLoading = false
                 return
             }
@@ -47,27 +47,26 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
             switch status {
             case .notDetermined:
-                print("LocationManager: Requesting WhenInUse authorization")
+                // Debug logs removed
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedWhenInUse, .authorizedAlways:
                 // If we have a recent cached location (<3 min), reuse it immediately for speed
                 // Always request a fresh fix so the user sees an update even if location is unchanged.
                 // We'll still use cached quickly if it arrives later via delegate.
-                print("LocationManager: Authorized — requesting one-shot location due to user action")
+                // Debug logs removed
                 self.locationManager.requestLocation()
             case .denied, .restricted:
-                print("LocationManager: Permission denied/restricted")
+                // Debug logs removed
                 self.isLoading = false
             @unknown default:
-                print("LocationManager: Unknown authorization status")
+                // Debug logs removed
                 self.isLoading = false
             }
         }
     }
     
     func setLocation(_ location: CLLocation, name: String? = nil) {
-        print("LocationManager.setLocation called with: \(name ?? "unnamed") at (\(location.coordinate.latitude), \(location.coordinate.longitude))")
-        print("LocationManager.setLocation: Previous state - hasSelectedLocation: \(hasSelectedLocation), selectedLocationName: \(selectedLocationName ?? "nil")")
+        // Debug logs removed
         
         // Force a new instance so SwiftUI change handlers fire even if coords are the same
         let copied = CLLocation(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
@@ -76,8 +75,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         self.selectedLocationName = name
         self.isLoading = false
         
-        print("LocationManager.setLocation: New state - hasSelectedLocation: \(hasSelectedLocation), selectedLocationName: \(selectedLocationName ?? "nil")")
-        print("LocationManager.setLocation: Location set successfully")
+        // Debug logs removed
     }
     
     func clearLocation() {
@@ -120,7 +118,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         DispatchQueue.main.async {
             self.isLoading = false
-            print("Location error: \(error.localizedDescription)")
+            // Debug logs removed
         }
     }
     
@@ -142,17 +140,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     private func handleAuthorizationChange(currentStatus status: CLAuthorizationStatus) {
         DispatchQueue.main.async {
-            print("LocationManager: Authorization status changed from \(self.authorizationStatus) to \(status)")
+            // Debug logs removed
             self.authorizationStatus = status
 
             guard CLLocationManager.locationServicesEnabled() else {
-                print("LocationManager: Location services disabled")
+                // Debug logs removed
                 self.isLoading = false
                 return
             }
 
             // Do not auto-request; wait until user explicitly selects current location
-            print("LocationManager: Authorization change handled (no auto location request)")
+            // Debug logs removed
         }
     }
 }

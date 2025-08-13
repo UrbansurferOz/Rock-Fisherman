@@ -638,19 +638,14 @@ class FishingNewsViewModel: ObservableObject {
 			return out
 		}()
 		let query = buildCappedQuery(baseTerms: baseTerms, tokens: dedupedTokens, maxChars: 480)
-		let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+		// Encoded query not needed explicitly; URLComponents handles encoding
 
         // NewsAPI.org configuration — load from environment first, then Info.plist
         let envKey = ProcessInfo.processInfo.environment["YOUR_NEWSAPI_API_KEY"]
         let plistKey = Bundle.main.object(forInfoDictionaryKey: "YOUR_NEWSAPI_API_KEY") as? String
         let rawKey = (envKey?.isEmpty == false ? envKey : plistKey) ?? ""
         let apiKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
-		#if DEBUG
-		let envKeyLen = ProcessInfo.processInfo.environment["YOUR_NEWSAPI_API_KEY"]?.count ?? 0
-		let plistKeyLen = (Bundle.main.object(forInfoDictionaryKey: "YOUR_NEWSAPI_API_KEY") as? String)?.count ?? 0
-		let masked = apiKey.isEmpty ? "(empty)" : (String(apiKey.prefix(4)) + "…" + String(apiKey.suffix(4)))
-		print("NewsAPI: envLen=\(envKeyLen) plistLen=\(plistKeyLen) usingKey=\(masked)")
-		#endif
+		// Debug logs removed
         guard !apiKey.isEmpty else {
             self.isLoading = false
             self.errorMessage = "Missing NewsAPI key. Add YOUR_NEWSAPI_API_KEY in the Scheme or Info.plist."
@@ -673,17 +668,11 @@ class FishingNewsViewModel: ObservableObject {
             self.errorMessage = "Invalid news URL"
             return
         }
-		#if DEBUG
-		print("NewsAPI: query=\(query)")
-		print("NewsAPI URL: \(url.absoluteString)")
-		#endif
+		// Debug logs removed
 
 		var request = URLRequest(url: url)
 		request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
-		#if DEBUG
-		let maskedForHeader = apiKey.isEmpty ? "(empty)" : (String(apiKey.prefix(4)) + "…" + String(apiKey.suffix(4)))
-		print("NewsAPI: set header X-Api-Key=\(maskedForHeader)")
-		#endif
+		// Debug logs removed
 
         URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { data, _ -> [FishingArticle] in
@@ -766,17 +755,12 @@ class FishingNewsViewModel: ObservableObject {
                 self.isLoading = false
 				if case let .failure(error) = completion {
                     self.errorMessage = error.localizedDescription
-					#if DEBUG
-					print("NewsAPI failure: \(error.localizedDescription)")
-					#endif
+				// Debug logs removed
                 }
 			} receiveValue: { [weak self] fetched in
                 guard let self = self else { return }
                 self.articles = fetched
-				#if DEBUG
-				print("NewsAPI fetched articles: \(fetched.count)")
-				if fetched.isEmpty { print("NewsAPI: No articles after fallback; query=\(query)") }
-				#endif
+				// Debug logs removed
                 self.saveCache(fetched, for: locationKey)
             }
             .store(in: &cancellables)

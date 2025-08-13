@@ -162,16 +162,15 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
     private func handlePlacemarkResults(from source: String, query: String, placemarks: [CLPlacemark]) {
         DispatchQueue.main.async {
             self.isSearching = false
-            print("\(source) returned \(placemarks.count) placemarks for query=\(query)")
+            // Debug logs removed
             let filteredResults = self.filterAndRankResults(placemarks, for: query)
             if !filteredResults.isEmpty {
                 self.searchResults = filteredResults
             } else {
                 // Keep previous non-empty results to avoid flicker/disappearing suggestions
-                print("Filtered results empty for query=\(query); preserving previous results (count=\(self.searchResults.count))")
+                // Debug logs removed
             }
-            print("Final filtered count=\(filteredResults.count)")
-            for r in filteredResults { print("Result: \(r.displayName) [score=\(r.searchScore)]") }
+            // Debug logs removed
         }
     }
 
@@ -185,13 +184,13 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
             DispatchQueue.main.async {
                 self.isSearching = false
                 if let error = error {
-                    print("Geocoding error for query=\(usedQuery): \(error.localizedDescription)")
+                    // Debug logs removed
                     self.searchError = "Location search failed: \(error.localizedDescription)"
                     self.searchResults = []
                     return
                 }
                 let returned = placemarks ?? []
-                print("Geocoder returned \(returned.count) placemarks for query=\(usedQuery)")
+                // Debug logs removed
                 guard !returned.isEmpty else {
                     // Do not clear; preserve existing results to prevent disappearing list while typing
                     return
@@ -200,33 +199,32 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 if !filteredResults.isEmpty {
                     self.searchResults = filteredResults
                 } else {
-                    print("Geocoder filtered to 0; preserving previous results (count=\(self.searchResults.count))")
+                    // Debug logs removed
                 }
-                print("Final filtered count=\(filteredResults.count)")
-                for r in filteredResults { print("Result: \(r.displayName) [score=\(r.searchScore)]") }
+                // Debug logs removed
             }
         }
 
-        print("Searching (scoped AU): \(auScopedQuery)")
+        // Debug logs removed
         geocoder.geocodeAddressString(auScopedQuery) { [weak self] auPlacemarks, auError in
             if let auPlacemarks, !auPlacemarks.isEmpty {
                 handleResponse(auScopedQuery, placemarks: auPlacemarks, error: auError)
                 return
             }
             if let userScoped = userScopedQuery {
-                print("Searching (scoped user country): \(userScoped)")
+                // Debug logs removed
                 self?.geocoder.geocodeAddressString(userScoped) { userPlacemarks, userError in
                     if let userPlacemarks, !userPlacemarks.isEmpty {
                         handleResponse(userScoped, placemarks: userPlacemarks, error: userError)
                         return
                     }
-                    print("Searching (raw): \(rawQuery)")
+                    // Debug logs removed
                     self?.geocoder.geocodeAddressString(rawQuery) { placemarks, error in
                         handleResponse(rawQuery, placemarks: placemarks, error: error)
                     }
                 }
             } else {
-                print("Searching (raw): \(rawQuery)")
+                // Debug logs removed
                 self?.geocoder.geocodeAddressString(rawQuery) { placemarks, error in
                     handleResponse(rawQuery, placemarks: placemarks, error: error)
                 }
@@ -250,7 +248,7 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         let completions = auCompletions.isEmpty ? Array(rawCompletions.prefix(6)) : Array(auCompletions.prefix(6))
         if completions.isEmpty { return }
 
-        print("Completer returned \(completions.count) suggestions for query=\(currentFragment)")
+        // Debug logs removed
 
         let group = DispatchGroup()
         var placemarks: [CLPlacemark] = []
@@ -292,14 +290,14 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                     if !finalResults.isEmpty {
                         self.isSearching = false
                         self.searchResults = finalResults
-                        print("Completer+AU resolved to \(finalResults.count) results")
+                    // Debug logs removed
                     }
                 }
             } else {
                 if !results.isEmpty {
                     self.isSearching = false
                     self.searchResults = results
-                    print("Completer resolved to \(results.count) results")
+                    // Debug logs removed
                 }
             }
         }
@@ -326,7 +324,7 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         // Build scored results and drop unrelated ones entirely
         var results: [LocationResult] = placemarks.compactMap { placemark in
             guard let location = placemark.location else {
-                print("Placemark has no location: \(placemark)")
+                // Debug logs removed
                 return nil
             }
 
@@ -372,21 +370,18 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 searchScore: score
             )
 
-            print("Created result: \(result.name) score=\(result.searchScore)")
+            // Debug logs removed
             return result
         }
 
         // If any AU results exist, keep only AU
         let auOnly = results.filter { $0.country.caseInsensitiveCompare(primaryCountryName) == .orderedSame }
         if !auOnly.isEmpty {
-            print("Pruning to AU-only results: kept=\(auOnly.count), dropped=\(results.count - auOnly.count)")
+            // Debug logs removed
             results = auOnly
         } else if !preferredCountryName.isEmpty {
             let preferredOnly = results.filter { $0.country.caseInsensitiveCompare(preferredCountryName) == .orderedSame }
-            if !preferredOnly.isEmpty {
-                print("Pruning to preferred-country-only results: kept=\(preferredOnly.count), dropped=\(results.count - preferredOnly.count)")
-                results = preferredOnly
-            }
+            if !preferredOnly.isEmpty { results = preferredOnly }
         }
 
         // Bias to primary country (AU) first, then user's country

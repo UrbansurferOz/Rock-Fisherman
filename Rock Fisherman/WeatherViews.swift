@@ -624,8 +624,20 @@ class FishingNewsViewModel: ObservableObject {
 				"Mornington","Frankston","Mordialloc","Brighton","Queenscliff","Sorrento","Gippsland","Williamstown"
 			])
 		}
-		let orList = localityClause.isEmpty ? "" : localityClause.joined(separator: " OR ")
-		let query = orList.isEmpty ? baseTerms : "\(baseTerms) (\(orList))"
+		// Build a query capped to NewsAPI's 500-character limit (use a small safety margin)
+		let dedupedTokens: [String] = {
+			var seen = Set<String>()
+			var out: [String] = []
+			for t in localityClause {
+				let key = t.lowercased()
+				if !seen.contains(key) {
+					seen.insert(key)
+					out.append(t)
+				}
+			}
+			return out
+		}()
+		let query = buildCappedQuery(baseTerms: baseTerms, tokens: dedupedTokens, maxChars: 480)
 		let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
 
         // NewsAPI.org configuration — load from environment first, then Info.plist
@@ -977,6 +989,26 @@ private func isInVictoria(_ location: CLLocation?) -> Bool {
     let lat = loc.coordinate.latitude
     let lon = loc.coordinate.longitude
     return (lat >= -39.2 && lat <= -33.8) && (lon >= 140.7 && lon <= 150.1)
+}
+
+// Build a query like: "<base> (t1 OR t2 OR t3 ...)" but cap to maxChars
+private func buildCappedQuery(baseTerms: String, tokens: [String], maxChars: Int) -> String {
+    if tokens.isEmpty { return baseTerms }
+    // Always try to keep the first N most relevant tokens
+    var kept: [String] = []
+    var current = baseTerms
+    for token in tokens {
+        // Try adding with OR separator
+        let candidateKept = kept.isEmpty ? token : "\(kept.joined(separator: " OR ")) OR \(token)"
+        let candidate = "\(baseTerms) (\(candidateKept))"
+        if candidate.count <= maxChars {
+            kept.append(token)
+            current = candidate
+        } else {
+            break
+        }
+    }
+    return current
 }
 
 // MARK: - Wave Info View

@@ -586,7 +586,7 @@ class FishingNewsViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
-    private let cachePrefix = "FishingNewsCache"
+    private let cachePrefix = "FishingNewsCacheV2"
     private let cacheExpiry: TimeInterval = 3600 // 1 hour
     private var cancellables = Set<AnyCancellable>()
 
@@ -787,6 +787,8 @@ class FishingNewsViewModel: ObservableObject {
     private func cacheTsKey(for key: String) -> String { "\(cacheKey(for: key))_timestamp" }
 
     private func saveCache(_ articles: [FishingArticle], for key: String) {
+        // Do not cache empty results to avoid pinning "no news" for an hour
+        guard !articles.isEmpty else { return }
         let encoder = JSONEncoder()
         if let data = try? encoder.encode(articles) {
             UserDefaults.standard.set(data, forKey: cacheKey(for: key))
@@ -811,8 +813,19 @@ class FishingNewsViewModel: ObservableObject {
         let lon = location?.coordinate.longitude ?? 0
         let latStr = String(format: "%.2f", lat) // ~1km precision
         let lonStr = String(format: "%.2f", lon)
-        let place = (placeName ?? "").lowercased().replacingOccurrences(of: " ", with: "_")
-        return "\(place)_\(latStr)_\(lonStr)"
+        // Normalize to city + country only, ignoring any state component
+        let normalizedPlace: String = {
+            guard let name = placeName, !name.isEmpty else { return "" }
+            let parts = name.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let city = parts.first ?? ""
+            let country = parts.count >= 2 ? parts.last ?? "" : ""
+            let joined = [city, country]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: ",")
+            return joined.lowercased().replacingOccurrences(of: " ", with: "_")
+        }()
+        return "\(normalizedPlace)_\(latStr)_\(lonStr)"
     }
 
 private func makePlaceTokens(from placeName: String?, location: CLLocation?) -> [String] {

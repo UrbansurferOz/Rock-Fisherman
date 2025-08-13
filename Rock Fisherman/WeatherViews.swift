@@ -849,6 +849,9 @@ struct FishingNewsView: View {
                     .fontWeight(.bold)
             }
 
+            // Azure AI Services (Bing News) – Rock Fishing localised section
+            RockFishingNewsSection()
+
             if viewModel.isLoading {
                 ProgressView("Loading news...")
                     .frame(maxWidth: .infinity, alignment: .center)

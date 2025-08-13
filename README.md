@@ -18,6 +18,7 @@ A comprehensive iOS fishing weather app built with SwiftUI that provides real-ti
 - **Optimal fishing indicators** for temperature, wind, and precipitation
 - **Visual fishing status** with color-coded conditions (Excellent, Good, Fair, Poor)
 - **Fishing news & live catch reports** (last 30 days, biased to ~50 km of selected location) with 1‑hour caching
+  - New: Azure AI Services (Bing News) powered "Rock Fishing — Local News" section (AU‑focused)
 
 ### 📱 Modern iOS Design
 - **SwiftUI-based interface** following Apple's Human Interface Guidelines
@@ -102,6 +103,11 @@ Add your WorldTides key:
   - Base URL: `https://newsapi.org/v2/everything`
   - Requires API key (see below)
 
+Azure AI Services (Bing News via your Azure endpoint)
+- Endpoint: your Azure AI Services endpoint host (e.g. `https://yourname.cognitiveservices.azure.com/`)
+- Path used: `bing/v7.0/news/search`
+- Requires subscription key
+
 Add your NewsAPI key (preferred: Scheme environment variable):
 1. In Xcode, select Product → Scheme → Edit Scheme…
 2. Select the Run action → Arguments tab.
@@ -118,6 +124,17 @@ Notes for NewsAPI:
 - Results are limited to the last 30 days and sorted by publish date.
 - Geographic radius filters aren’t available in NewsAPI; the app biases local results by including your selected place name tokens in the query and filters client‑side for relevance.
 - Responses are cached per‑location for 1 hour to reduce API usage and improve performance.
+
+Add your Azure AI Services credentials (Info.plist):
+1. In Xcode, open your target Info tab (or edit `Info.plist`).
+2. Add String keys:
+   - `RF_AZURE_AI_ENDPOINT` → e.g. `https://yourname.cognitiveservices.azure.com/`
+   - `RF_AZURE_AI_KEY` → your Azure AI Services key
+3. Build and run. The "Rock Fishing — Local News" section will appear in the News tab above other providers.
+4. Behavior:
+   - AU market (`mkt=en-AU`) and `site:au` bias
+   - Last 30 days only; scored for rock‑fishing relevance and freshness
+   - Top 10 returned; cached on disk for 1 hour
 
 
 Notes:

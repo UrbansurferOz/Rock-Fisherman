@@ -940,48 +940,6 @@ struct FishingNewsView: View {
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .padding(.top, 8)
-
-                        // NSW: Show Tides4Fishing summary card below news
-                        if isInNewSouthWales(locationManager.location) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "waveform")
-                                        .foregroundColor(.blue)
-                                    Text("Tides, Solunar, Weather • Sydney (NSW)")
-                                        .font(.headline)
-                                }
-
-                                Text("Key data available for Sydney on Tides4Fishing:")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Label("Tides: daily high/low times, tidal coefficients, tables", systemImage: "clock")
-                                        .font(.footnote)
-                                    Label("Solunar: moonrise/set, phases, bite/activity windows", systemImage: "moon")
-                                        .font(.footnote)
-                                    Label("Weather: wind, precipitation, visibility, and UV guidance", systemImage: "sun.max")
-                                        .font(.footnote)
-                                    Label("Water: temperature and swell (height, period, direction)", systemImage: "water.waves")
-                                        .font(.footnote)
-                                    Label("Nearby sites: Manly, Dee Why, Narrabeen, Newport, Palm Beach, Pittwater, etc.", systemImage: "mappin.and.ellipse")
-                                        .font(.footnote)
-                                }
-
-                                if let url = URL(string: "https://tides4fishing.com/au/new-south-wales/sydney") {
-                                    Link("Open Tides4Fishing – Sydney (NSW)", destination: url)
-                                        .font(.footnote)
-                                        .foregroundColor(.blue)
-                                }
-
-                                Text("Source: Tides4Fishing (Sydney, NSW)")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-                        }
                     }
                 }
             } else if !viewModel.isLoading && viewModel.errorMessage == nil {

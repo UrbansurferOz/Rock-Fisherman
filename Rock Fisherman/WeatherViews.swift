@@ -629,6 +629,10 @@ class FishingNewsViewModel: ObservableObject {
             self.errorMessage = "Missing NewsAPI key. Add YOUR_NEWSAPI_API_KEY in the Scheme or Info.plist."
             return
         }
+        #if DEBUG
+        let masked = apiKey.isEmpty ? "(empty)" : (String(apiKey.prefix(4)) + "…" + String(apiKey.suffix(4)))
+        print("NewsAPI: Using key=\(masked), placeTokens=\(placeTokens)")
+        #endif
         let dateParam = String(date30DaysAgo.prefix(10)) // yyyy-MM-dd
 
         var comps = URLComponents(string: "https://newsapi.org/v2/everything")!
@@ -646,6 +650,9 @@ class FishingNewsViewModel: ObservableObject {
             self.errorMessage = "Invalid news URL"
             return
         }
+        #if DEBUG
+        print("NewsAPI URL: \(url.absoluteString)")
+        #endif
 
         var request = URLRequest(url: url)
         request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
@@ -708,10 +715,17 @@ class FishingNewsViewModel: ObservableObject {
                 self.isLoading = false
                 if case let .failure(error) = completion {
                     self.errorMessage = error.localizedDescription
+                    #if DEBUG
+                    print("NewsAPI failure: \(error.localizedDescription)")
+                    #endif
                 }
             } receiveValue: { [weak self] fetched in
                 guard let self = self else { return }
                 self.articles = fetched
+                #if DEBUG
+                print("NewsAPI fetched articles: \(fetched.count)")
+                if fetched.isEmpty { print("NewsAPI: No articles after fallback; query=\(query)") }
+                #endif
                 self.saveCache(fetched, for: locationKey)
             }
             .store(in: &cancellables)

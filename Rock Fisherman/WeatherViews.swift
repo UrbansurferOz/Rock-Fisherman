@@ -610,6 +610,25 @@ class FishingNewsViewModel: ObservableObject {
 		let limitedTokens = Array(placeTokens.prefix(12))
 		let baseTerms = "(fishing OR angler OR fisherman OR \"fishing report\" OR \"catch report\" OR \"live report\" OR \"fishing competition\" OR \"bag limit\" OR \"NSW Fisheries\" OR snapper OR bream OR flathead OR whiting OR kingfish OR salmon)"
 
+        // Strict locality tokens: city + country only (ignore state)
+        let strictLocationTokensLower: [String] = {
+            guard let name = placeName, !name.isEmpty else { return [] }
+            let parts = name.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            guard !parts.isEmpty else { return [] }
+            let country = parts.last
+            let cityOrTown = parts.first
+            var out: [String] = []
+            if let country { out.append(country) }
+            if let cityOrTown { out.append(cityOrTown) }
+            // Deduplicate while preserving order
+            var seen = Set<String>()
+            var unique: [String] = []
+            for t in out where !t.isEmpty {
+                if !seen.contains(t) { unique.append(t); seen.insert(t) }
+            }
+            return unique
+        }()
+
 		// Heuristic query to bias toward local results with built-in NSW fallbacks
 		var localityClause = limitedTokens
 		if isInNewSouthWales(location) {
@@ -658,7 +677,8 @@ class FishingNewsViewModel: ObservableObject {
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "from", value: dateParam),
             URLQueryItem(name: "language", value: "en"),
-			URLQueryItem(name: "sortBy", value: "relevancy"),
+            // Fetch by recency; we will re-rank by combined relevance + recency equally weighted
+			URLQueryItem(name: "sortBy", value: "publishedAt"),
 			URLQueryItem(name: "pageSize", value: "100"),
 			URLQueryItem(name: "searchIn", value: "title,description,content")
         ]
@@ -678,68 +698,61 @@ class FishingNewsViewModel: ObservableObject {
             .tryMap { data, _ -> [FishingArticle] in
                 let isoDecoder = ISO8601DateFormatter()
                 let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-                let loweredTokens = Set(placeTokens.map { $0.lowercased() })
-                // Focus locality matching on city/suburb tokens; ignore generic country/state tokens
-                let adminStop: Set<String> = [
-                    "australia","nsw","new south wales","vic","victoria","qld","queensland",
-                    "sa","south australia","wa","western australia","tas","tasmania","act"
+                let fishingTermsLower: [String] = [
+                    "fishing","angler","fisherman","fishing report","catch report","live report",
+                    "fishing competition","bag limit","nsw fisheries","snapper","bream","flathead",
+                    "whiting","kingfish","salmon","rock fishing","reef","shore","lure","bait"
                 ]
-                let focusTokens = loweredTokens.subtracting(adminStop)
+
+                func computeFinalScore(textLower: String, published: Date, strictLoc: [String]) -> Double {
+                    // Relevance from fishing terms and locality mentions
+                    let fishHits = fishingTermsLower.reduce(0) { $0 + (textLower.contains($1) ? 1 : 0) }
+                    let fishScore = min(1.0, Double(fishHits) / 3.0)
+                    let locHits = strictLoc.reduce(0) { $0 + (textLower.contains($1) ? 1 : 0) }
+                    let locScore = strictLoc.isEmpty ? 0.0 : min(1.0, Double(locHits) / 2.0)
+                    let relevance = min(1.0, 0.7 * fishScore + 0.3 * locScore)
+                    // Recency: 1.0 now, 0.0 at 30 days
+                    let age = max(0.0, Date().timeIntervalSince(published))
+                    let ageDays = age / 86400.0
+                    let recency = max(0.0, 1.0 - ageDays / 30.0)
+                    return 0.5 * relevance + 0.5 * recency
+                }
+
+                func isLocal(urlString: String?, textLower: String, strictLoc: [String]) -> Bool {
+                    if strictLoc.isEmpty { return true }
+                    if strictLoc.contains(where: { textLower.contains($0) }) { return true }
+                    if let u = urlString, let host = URL(string: u)?.host?.lowercased() {
+                        if strictLoc.contains("australia"), host.hasSuffix(".au") { return true }
+                    }
+                    return false
+                }
 
                 if let response = try? JSONDecoder().decode(NewsAPIResponse.self, from: data) {
-                    func mapArticles(filterLocal: Bool) -> [FishingArticle] {
-                        response.articles.compactMap { doc in
+                    var scored: [(FishingArticle, Double)] = []
+                    scored.reserveCapacity(response.articles.count)
+                    for doc in response.articles {
                         let title = doc.title ?? ""
                         let description = doc.description ?? ""
-                        let url = doc.url
-                        let publishedStr = doc.publishedAt
-                        let source = doc.source?.name ?? "Unknown"
-
-                        guard let articleUrl = url, !title.isEmpty else { return nil }
-
-                        let published = (publishedStr.flatMap { isoDecoder.date(from: $0) }) ?? Date()
-                        guard published >= cutoff else { return nil }
-
-                        let titleLower = title.lowercased()
-                        let descLower = description.lowercased()
-                        if filterLocal, !loweredTokens.isEmpty {
-                            let basis = focusTokens.isEmpty ? loweredTokens : focusTokens
-                            let matchesLocal = basis.contains(where: { token in
-                                titleLower.contains(token) || descLower.contains(token)
-                            })
-                            if !matchesLocal { return nil }
-                        }
-
-                        return FishingArticle(
-                            title: title,
-                            description: description,
-                            url: articleUrl,
-                            publishedAt: published,
-                            source: source
-                        )
-                        }
+                        guard let url = doc.url, !title.isEmpty else { continue }
+                        let published = (doc.publishedAt.flatMap { isoDecoder.date(from: $0) }) ?? Date()
+                        guard published >= cutoff else { continue }
+                        let textLower = (title + " " + description).lowercased()
+                        // Must be fishing-related
+                        let hasFishing = fishingTermsLower.contains { textLower.contains($0) }
+                        guard hasFishing else { continue }
+                        // Must be local to strict tokens (country/city)
+                        guard isLocal(urlString: url, textLower: textLower, strictLoc: strictLocationTokensLower) else { continue }
+                        let score = computeFinalScore(textLower: textLower, published: published, strictLoc: strictLocationTokensLower)
+                        let article = FishingArticle(title: title, description: description, url: url, publishedAt: published, source: doc.source?.name ?? "Unknown")
+                        scored.append((article, score))
                     }
-
-                    // Try: local filter → unfiltered → broader backup term set
-                    let local = mapArticles(filterLocal: true)
-                    if !local.isEmpty { return local.sorted(by: { $0.publishedAt > $1.publishedAt }) }
-                    let fallback = mapArticles(filterLocal: false)
-                    if !fallback.isEmpty { return fallback.sorted(by: { $0.publishedAt > $1.publishedAt }) }
-                    // Build a broader set on the fly if empty
-                    let backupTokens = ["fishing","fishing report","catch","angler","snapper","bream","salmon","flathead","whiting","kingfish","rock fishing","Sydney","Northern Beaches","Pittwater","NSW"]
-                    let broadened = response.articles.compactMap { doc -> FishingArticle? in
-                        let title = doc.title ?? ""
-                        let desc = doc.description ?? ""
-                        let url = doc.url
-                        let publishedStr = doc.publishedAt
-                        guard let articleUrl = url, !title.isEmpty else { return nil }
-                        let published = (publishedStr.flatMap { isoDecoder.date(from: $0) }) ?? Date()
-                        guard published >= cutoff else { return nil }
-                        let text = (title + " " + desc).lowercased()
-                        guard backupTokens.contains(where: { text.contains($0) }) else { return nil }
-                        return FishingArticle(title: title, description: desc, url: articleUrl, publishedAt: published, source: doc.source?.name ?? "Unknown")
-                    }
-                    return broadened.sorted(by: { $0.publishedAt > $1.publishedAt })
+                    // Sort by combined score desc, then most recent
+                    return scored
+                        .sorted { (a, b) in
+                            if a.1 != b.1 { return a.1 > b.1 }
+                            return a.0.publishedAt > b.0.publishedAt
+                        }
+                        .map { $0.0 }
                 }
 
                 if let err = try? JSONDecoder().decode(NewsAPIErrorResponse.self, from: data) {

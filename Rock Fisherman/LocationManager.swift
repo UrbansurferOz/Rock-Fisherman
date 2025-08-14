@@ -17,12 +17,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        // Initialize with the current authorization to avoid stale state
-        if #available(iOS 14.0, *) {
-            self.authorizationStatus = locationManager.authorizationStatus
-        } else {
-            self.authorizationStatus = CLLocationManager.authorizationStatus()
-        }
+        // Initialize with the current authorization to avoid stale state (iOS 14+ API)
+        self.authorizationStatus = locationManager.authorizationStatus
     }
     
     func requestLocation() {
@@ -35,12 +31,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 return
             }
 
-            let status: CLAuthorizationStatus
-            if #available(iOS 14.0, *) {
-                status = self.locationManager.authorizationStatus
-            } else {
-                status = CLLocationManager.authorizationStatus()
-            }
+            let status: CLAuthorizationStatus = self.locationManager.authorizationStatus
 
             // Keep our published status in sync with the system value
             self.authorizationStatus = status
@@ -123,18 +114,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        // Keep for backward compatibility; iOS 14+ will also call locationManagerDidChangeAuthorization
+        // Deprecated in favor of locationManagerDidChangeAuthorization on iOS 14+; keep for completeness
         handleAuthorizationChange(currentStatus: status)
     }
 
     // iOS 14+ preferred callback
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        let status: CLAuthorizationStatus
-        if #available(iOS 14.0, *) {
-            status = manager.authorizationStatus
-        } else {
-            status = CLLocationManager.authorizationStatus()
-        }
+        let status: CLAuthorizationStatus = manager.authorizationStatus
         handleAuthorizationChange(currentStatus: status)
     }
 

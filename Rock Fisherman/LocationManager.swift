@@ -20,8 +20,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        // Initialize with the current authorization to avoid stale state (iOS 14+ API)
-        self.authorizationStatus = locationManager.authorizationStatus
+        // Do not poll authorization synchronously; rely on delegate callbacks to sync state
     }
     
     func requestLocation() {
@@ -33,11 +32,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
 
-        let status: CLAuthorizationStatus = locationManager.authorizationStatus
+        // Avoid querying manager.authorizationStatus on the main thread; use our stored value
+        let status: CLAuthorizationStatus = self.authorizationStatus
 #if DEBUG
         print("[Loc] requestLocation() status=\(status.rawValue) pending=\(pendingRequestAfterAuth)")
 #endif
-        DispatchQueue.main.async { self.authorizationStatus = status }
 
         switch status {
         case .notDetermined:

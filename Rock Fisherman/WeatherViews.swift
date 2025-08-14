@@ -698,6 +698,9 @@ class FishingNewsViewModel: ObservableObject {
 
         // Serve cached if fresh
         if let cached = loadCache(for: locationKey), !isCacheExpired(for: locationKey) {
+#if DEBUG
+            print("[News] Using cached articles for key=\(locationKey). count=\(cached.count)")
+#endif
             self.articles = cached
             return
         }
@@ -708,6 +711,13 @@ class FishingNewsViewModel: ObservableObject {
         let last30 = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
         let isoFormatter = ISO8601DateFormatter()
         let date30DaysAgo = isoFormatter.string(from: last30)
+#if DEBUG
+        if let loc = location {
+            print("[News] Fetching for place='\(placeName ?? "nil")' lat=\(String(format: "%.4f", loc.coordinate.latitude)) lon=\(String(format: "%.4f", loc.coordinate.longitude)) since=\(String(date30DaysAgo.prefix(10)))")
+        } else {
+            print("[News] Fetching for place='\(placeName ?? "nil")' (no location) since=\(String(date30DaysAgo.prefix(10)))")
+        }
+#endif
 
 		let placeTokens: [String] = makePlaceTokens(from: placeName, location: location)
 			.filter { token in
@@ -737,6 +747,10 @@ class FishingNewsViewModel: ObservableObject {
             }
             return unique
         }()
+#if DEBUG
+        print("[News] placeTokens=\(placeTokens)")
+        print("[News] strictTokens=\(strictLocationTokensLower)")
+#endif
 
 		// Heuristic query to bias toward local results with built-in NSW fallbacks
 		var localityClause = limitedTokens
@@ -753,7 +767,7 @@ class FishingNewsViewModel: ObservableObject {
 			])
 		}
 		// Build a query capped to NewsAPI's 500-character limit (use a small safety margin)
-		let dedupedTokens: [String] = {
+        let dedupedTokens: [String] = {
 			var seen = Set<String>()
 			var out: [String] = []
 			for t in localityClause {
@@ -767,6 +781,11 @@ class FishingNewsViewModel: ObservableObject {
 		}()
 		let query = buildCappedQuery(baseTerms: baseTerms, tokens: dedupedTokens, maxChars: 480)
 		// Encoded query not needed explicitly; URLComponents handles encoding
+#if DEBUG
+        print("[News] localityClause(\(localityClause.count))=\(localityClause)")
+        print("[News] dedupedTokens(\(dedupedTokens.count))=\(dedupedTokens)")
+        print("[News] query=\(query)")
+#endif
 
         // NewsAPI.org configuration — load from environment first, then Info.plist
         let envKey = ProcessInfo.processInfo.environment["YOUR_NEWSAPI_API_KEY"]
@@ -836,6 +855,9 @@ class FishingNewsViewModel: ObservableObject {
         }
 
                 if let response = try? JSONDecoder().decode(NewsAPIResponse.self, from: data) {
+#if DEBUG
+                    print("[News] API returned \(response.articles.count) articles before filtering")
+#endif
                     var scored: [(FishingArticle, Double)] = []
                     scored.reserveCapacity(response.articles.count)
                     for doc in response.articles {
@@ -847,20 +869,39 @@ class FishingNewsViewModel: ObservableObject {
                         let textLower = (title + " " + description).lowercased()
                         // Must be fishing-related
                         let hasFishing = fishingTermsLower.contains { textLower.contains($0) }
-                        guard hasFishing else { continue }
+                        guard hasFishing else {
+#if DEBUG
+                            let host = URL(string: url)?.host ?? ""
+                            print("[News] drop(not fishing): host=\(host) title='\(title)'")
+#endif
+                            continue
+                        }
                         // Must be local to strict tokens (country/city)
-                        guard isLocal(urlString: url, textLower: textLower, strictLoc: strictLocationTokensLower) else { continue }
+                        guard isLocal(urlString: url, textLower: textLower, strictLoc: strictLocationTokensLower) else {
+#if DEBUG
+                            let host = URL(string: url)?.host ?? ""
+                            print("[News] drop(not local): host=\(host) title='\(title)' strict=\(strictLocationTokensLower)")
+#endif
+                            continue
+                        }
                         let score = computeFinalScore(textLower: textLower, published: published, strictLoc: strictLocationTokensLower)
                         let article = FishingArticle(title: title, description: description, url: url, publishedAt: published, source: doc.source?.name ?? "Unknown")
                         scored.append((article, score))
                     }
                     // Sort by combined score desc, then most recent
-                    return scored
+                    let kept = scored
                         .sorted { (a, b) in
                             if a.1 != b.1 { return a.1 > b.1 }
                             return a.0.publishedAt > b.0.publishedAt
                         }
-                        .map { $0.0 }
+                    let keptArticles = kept.map { $0.0 }
+#if DEBUG
+                    print("[News] kept=\(keptArticles.count) after filtering")
+                    for a in keptArticles.prefix(5) {
+                        print("[News] keep: \(a.title) [\(a.source)]")
+                    }
+#endif
+                    return keptArticles
                 }
 
                 if let err = try? JSONDecoder().decode(NewsAPIErrorResponse.self, from: data) {

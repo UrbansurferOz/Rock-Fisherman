@@ -1211,13 +1211,14 @@ private func isInVictoria(_ location: CLLocation?) -> Bool {
 // Build a query like: "<base> (t1 OR t2 OR t3 ...)" but cap to maxChars
 private func buildCappedQuery(baseTerms: String, tokens: [String], maxChars: Int) -> String {
     if tokens.isEmpty { return baseTerms }
-    // Always try to keep the first N most relevant tokens
+    // Quote multi-word tokens
+    func quoteIfNeeded(_ t: String) -> String { t.contains(" ") ? "\"\(t)\"" : t }
     var kept: [String] = []
     var current = baseTerms
     for token in tokens {
-        // Try adding with OR separator
-        let candidateKept = kept.isEmpty ? token : "\(kept.joined(separator: " OR ")) OR \(token)"
-        let candidate = "\(baseTerms) (\(candidateKept))"
+        let qtok = quoteIfNeeded(token)
+        let candidateKept = kept.isEmpty ? qtok : "\(kept.map(quoteIfNeeded).joined(separator: " OR ")) OR \(qtok)"
+        let candidate = "(\(baseTerms)) AND (\(candidateKept))"
         if candidate.count <= maxChars {
             kept.append(token)
             current = candidate

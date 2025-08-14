@@ -931,39 +931,52 @@ class FishingNewsViewModel: ObservableObject {
 private func makePlaceTokens(from placeName: String?, location: CLLocation?) -> [String] {
     var tokens: [String] = []
     if let placeName, !placeName.isEmpty {
-        // Normalize to "City, Country" by stripping any state-like middle part
+        // Keep suburb, city/town, state, and country if available
         // Examples:
-        // - "Sydney, NSW, Australia" -> ["Sydney", "Australia"]
-        // - "Sydney, Australia" -> ["Sydney", "Australia"]
+        // - "Clareville, Sydney, NSW, Australia" -> [Clareville, Sydney, NSW, Australia]
+        // - "Clareville, NSW, Australia" -> [Clareville, NSW, Australia]
+        // - "Batemans Bay, NSW, Australia" (town) -> [Batemans Bay, NSW, Australia]
         let parts = placeName
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        var city: String? = nil
-        var country: String? = nil
-        if parts.count >= 2 {
-            city = parts.first
-            country = parts.last
+
+        if parts.count >= 4 {
+            tokens.append(contentsOf: [String(parts[0]), String(parts[1]), String(parts[2]), String(parts.last!)])
+        } else if parts.count == 3 {
+            // suburb or town, state, country
+            tokens.append(contentsOf: [String(parts[0]), String(parts[1]), String(parts[2])])
+        } else if parts.count == 2 {
+            tokens.append(contentsOf: [String(parts[0]), String(parts[1])])
         } else if parts.count == 1 {
-            city = parts[0]
+            tokens.append(String(parts[0]))
         }
-        if let c = city { tokens.append(c) }
-        if let ctry = country { tokens.append(ctry) }
     }
+
+    // Regional bias for NSW coast if inside NSW
     if isInNewSouthWales(location) {
         tokens.append(contentsOf: [
             "Clareville","Avalon","Bilgola","Newport","Mona Vale","Narrabeen","Collaroy",
             "Dee Why","Manly","Palm Beach","Pittwater","Northern Beaches","Sydney","Hawkesbury"
         ])
     }
-	let stopwords: Set<String> = ["new","south","wales","current","location"]
-    let cleaned = tokens
+
+    let stopwords: Set<String> = ["new","south","wales","current","location"]
+    // Clean, dedupe, keep meaningful tokens
+    var seen = Set<String>()
+    let cleaned: [String] = tokens
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
-        .filter { $0.count >= 3 }
+        .filter { $0.count >= 2 }
         .filter { !stopwords.contains($0.lowercased()) }
-    return Array(Set(cleaned))
-    }
+        .filter { token in
+            let key = token.lowercased()
+            if seen.contains(key) { return false }
+            seen.insert(key)
+            return true
+        }
+    return cleaned
+}
 }
 
 // MARK: - Fishing News View

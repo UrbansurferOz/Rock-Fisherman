@@ -727,22 +727,27 @@ class FishingNewsViewModel: ObservableObject {
 		let limitedTokens = Array(placeTokens.prefix(12))
 		let baseTerms = "(fishing OR angler OR fisherman OR \"fishing report\" OR \"catch report\" OR \"live report\" OR \"fishing competition\" OR \"bag limit\" OR \"NSW Fisheries\" OR snapper OR bream OR flathead OR whiting OR kingfish OR salmon)"
 
-        // Strict locality tokens: prefer specific suburb/city and state; exclude generic country-only
+        // Strict locality tokens: use suburb/city + state and nearby region hints; exclude generic country-only
         let strictLocationTokensLower: [String] = {
-            guard let name = placeName, !name.isEmpty else { return [] }
-            let parts = name.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            guard !parts.isEmpty else { return [] }
-            var out: [String] = []
-            if let first = parts.first, !first.isEmpty { out.append(first) } // suburb or city
-            if parts.count >= 2 {
-                let mid = parts.dropFirst().dropLast()
-                for m in mid where !m.isEmpty { out.append(m) } // state if present
+            var base: [String] = limitedTokens.map { $0.lowercased() }
+            if isInNewSouthWales(location) {
+                base.append(contentsOf: [
+                    "sydney","northern beaches","pittwater","manly","dee why","narrabeen","newport",
+                    "avalon","bilgola","mona vale","palm beach"
+                ])
             }
-            // Do NOT add country-only token to strict list; it is too broad
-            // Deduplicate while preserving order
+            if isInVictoria(location) || (placeName ?? "").localizedCaseInsensitiveContains("Melbourne") || (placeName ?? "").localizedCaseInsensitiveContains("Victoria") {
+                base.append(contentsOf: [
+                    "melbourne","victoria","vic","port phillip bay","port phillip","western port","st kilda",
+                    "mornington","frankston","mordialloc","brighton","queenscliff","sorrento","gippsland","williamstown"
+                ])
+            }
+            if base.contains("nsw") { base.append("new south wales") }
+            // Remove overly broad tokens and dedupe
             var seen = Set<String>()
             var unique: [String] = []
-            for t in out where !t.isEmpty {
+            for t in base where !t.isEmpty {
+                if t == "australia" || t == "au" { continue }
                 if !seen.contains(t) { unique.append(t); seen.insert(t) }
             }
             return unique
@@ -754,12 +759,12 @@ class FishingNewsViewModel: ObservableObject {
 
 		// Heuristic query to bias toward local results with built-in NSW fallbacks
 		var localityClause = limitedTokens
-		if isInNewSouthWales(location) {
-			localityClause.append(contentsOf: [
-				"Sydney","Northern Beaches","Pittwater","Manly","Dee Why","Narrabeen","Newport","Avalon",
-				"Bilgola","Mona Vale","Palm Beach","Australia"
-			])
-		}
+        if isInNewSouthWales(location) {
+            localityClause.append(contentsOf: [
+                "Sydney","Northern Beaches","Pittwater","Manly","Dee Why","Narrabeen","Newport","Avalon",
+                "Bilgola","Mona Vale","Palm Beach"
+            ])
+        }
 		if isInVictoria(location) || (placeName ?? "").localizedCaseInsensitiveContains("Melbourne") || (placeName ?? "").localizedCaseInsensitiveContains("Victoria") {
 			localityClause.append(contentsOf: [
 				"Melbourne","Victoria","VIC","Port Phillip Bay","Port Phillip","Western Port","St Kilda",

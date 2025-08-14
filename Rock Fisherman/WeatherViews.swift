@@ -710,19 +710,25 @@ class FishingNewsViewModel: ObservableObject {
         let date30DaysAgo = isoFormatter.string(from: last30)
 
 		let placeTokens: [String] = makePlaceTokens(from: placeName, location: location)
+			.filter { token in
+				let t = token.lowercased()
+				return t != "australia" && t != "au"
+			}
 		let limitedTokens = Array(placeTokens.prefix(12))
 		let baseTerms = "(fishing OR angler OR fisherman OR \"fishing report\" OR \"catch report\" OR \"live report\" OR \"fishing competition\" OR \"bag limit\" OR \"NSW Fisheries\" OR snapper OR bream OR flathead OR whiting OR kingfish OR salmon)"
 
-        // Strict locality tokens: city + country only (ignore state)
+        // Strict locality tokens: prefer specific suburb/city and state; exclude generic country-only
         let strictLocationTokensLower: [String] = {
             guard let name = placeName, !name.isEmpty else { return [] }
             let parts = name.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             guard !parts.isEmpty else { return [] }
-            let country = parts.last
-            let cityOrTown = parts.first
             var out: [String] = []
-            if let country { out.append(country) }
-            if let cityOrTown { out.append(cityOrTown) }
+            if let first = parts.first, !first.isEmpty { out.append(first) } // suburb or city
+            if parts.count >= 2 {
+                let mid = parts.dropFirst().dropLast()
+                for m in mid where !m.isEmpty { out.append(m) } // state if present
+            }
+            // Do NOT add country-only token to strict list; it is too broad
             // Deduplicate while preserving order
             var seen = Set<String>()
             var unique: [String] = []
@@ -821,14 +827,13 @@ class FishingNewsViewModel: ObservableObject {
                     return 0.5 * relevance + 0.5 * recency
                 }
 
-                func isLocal(urlString: String?, textLower: String, strictLoc: [String]) -> Bool {
-                    if strictLoc.isEmpty { return true }
-                    if strictLoc.contains(where: { textLower.contains($0) }) { return true }
-                    if let u = urlString, let host = URL(string: u)?.host?.lowercased() {
-                        if strictLoc.contains("australia"), host.hasSuffix(".au") { return true }
-                    }
-                    return false
-                }
+        func isLocal(urlString: String?, textLower: String, strictLoc: [String]) -> Bool {
+            if strictLoc.isEmpty { return true }
+            // Require mention of suburb/city/state token in text (case-insensitive)
+            if strictLoc.contains(where: { textLower.contains($0) }) { return true }
+            // No generic ".au" host fallback; enforce locality tokens only
+            return false
+        }
 
                 if let response = try? JSONDecoder().decode(NewsAPIResponse.self, from: data) {
                     var scored: [(FishingArticle, Double)] = []

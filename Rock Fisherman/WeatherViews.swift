@@ -322,123 +322,123 @@ struct HourlyForecastView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Next 48 Hours")
-                    .font(.headline).fontWeight(.semibold)
+                    .font(.headline)
+                    .fontWeight(.semibold)
 
-                // ONE grid for header + rows ➜ columns align perfectly
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
-
-                // Header
-                GridRow {
-                    Text("Time")
-                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .frame(width: colTime, alignment: .leading)
-
-                    // Weather spans cloud icon + temperature columns
-                    Text("Weather")
-                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .frame(width: colIcon + colTemp, alignment: .leading)
-                        .gridCellColumns(2)
-
-                    Text("Tide")
-                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .frame(width: colTide, alignment: .leading)
-
-                    Text("Wind")
-                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .frame(width: colWind, alignment: .leading)
-
-                    Text("Rain")
-                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .frame(width: colRain, alignment: .leading)
-
-                    Text("Wave")
-                        .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .frame(width: colWave, alignment: .leading)
-
-                    // We won't add a header for tide; show below Temp in row
-
-                    Text("")
-                        .frame(width: colFish, alignment: .leading)
-                }
-                .padding(.vertical, 6)
-                .background(Color(.systemGray6))
-                .cornerRadius(6)
-
-                // Rows
-                ForEach(next48HoursForecast, id: \.id) { f in
+                    // Header
                     GridRow {
-                        // Time
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(f.formattedTime)
-                                .font(.caption).fontWeight(.medium)
-                        }
-                        .frame(width: colTime, alignment: .leading)
+                        Text("Time")
+                            .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                            .frame(width: colTime, alignment: .leading)
 
-                        // Cloud Icon
-                        Image(systemName: weatherIcon(for: f.weatherCode))
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                            .frame(width: colIcon)
+                        Text("Weather")
+                            .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                            .frame(width: colIcon + colTemp, alignment: .leading)
+                            .gridCellColumns(2)
 
-                        // Temp
-                        Text("\(Int(round(f.temperature)))°")
-                            .font(.caption).fontWeight(.medium)
-                            .monospacedDigit()
-                            .frame(width: colTemp, alignment: .leading)
+                        Text("Tide")
+                            .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                            .frame(width: colTide, alignment: .leading)
 
-                        // High Tide (tide height)
-                        if let tide = f.tideHeight {
-                            Text(String(format: "%.1fm", tide))
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .frame(width: colTide, alignment: .leading)
-                        } else {
-                            Text("–")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .frame(width: colTide, alignment: .leading)
-                        }
-
-                        // Wind direction (e.g., ENE)
-                        Text(windDirectionString(degrees: f.windDirection))
-                            .font(.caption2)
+                        Text("Wind")
+                            .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
                             .frame(width: colWind, alignment: .leading)
 
-                        // Rain
-                        HStack(spacing: 2) {
-                            Image(systemName: "drop.fill").font(.caption2).foregroundColor(.blue)
-                            Text("\(Int(round(f.precipitation)))")
-                                .font(.caption2).monospacedDigit()
-                        }
-                        .frame(width: colRain, alignment: .leading)
+                        Text("Rain")
+                            .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                            .frame(width: colRain, alignment: .leading)
 
-                        // Wave
-                        if let h = f.waveHeight {
-                            VStack(spacing: 2) {
-                                Text(String(format: "%.1fm", h))
-                                    .font(.caption2).fontWeight(.medium).monospacedDigit()
-                                if let d = f.waveDirection {
-                                    Text("\(d)°")
-                                        .font(.caption2).foregroundColor(.secondary).monospacedDigit()
-                                }
-                            }
+                        Text("Wave")
+                            .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
                             .frame(width: colWave, alignment: .leading)
-                        } else {
-                            Text("N/A")
-                                .font(.caption2).foregroundColor(.secondary)
-                                .frame(width: colWave, alignment: .leading)
-                        }
 
-                        // Fish
-                        Image(systemName: f.isGoodFishing ? "fish.fill" : "fish")
-                            .font(.caption2)
-                            .foregroundColor(f.isGoodFishing ? .green : .gray)
-                            .frame(width: colFish, alignment: .trailing)
+                        Text("")
+                            .frame(width: colFish, alignment: .leading)
                     }
                     .padding(.vertical, 6)
                     .background(Color(.systemGray6))
                     .cornerRadius(6)
+
+                    // Rows
+                    ForEach(next48HoursForecast, id: \.id) { f in
+                        GridRow {
+                            // Time
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(f.formattedTime)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .frame(width: colTime, alignment: .leading)
+
+                            // Cloud Icon
+                            Image(systemName: weatherIcon(for: f.weatherCode))
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                                .frame(width: colIcon)
+
+                            // Temp
+                            Text("\(Int(round(f.temperature)))°")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .monospacedDigit()
+                                .frame(width: colTemp, alignment: .leading)
+
+                            // Tide height
+                            if let tide = f.tideHeight {
+                                Text(String(format: "%.1fm", tide))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .frame(width: colTide, alignment: .leading)
+                            } else {
+                                Text("–")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .frame(width: colTide, alignment: .leading)
+                            }
+
+                            // Wind direction (e.g., ENE)
+                            Text(windDirectionString(degrees: f.windDirection))
+                                .font(.caption2)
+                                .frame(width: colWind, alignment: .leading)
+
+                            // Rain
+                            HStack(spacing: 2) {
+                                Image(systemName: "drop.fill").font(.caption2).foregroundColor(.blue)
+                                Text("\(Int(round(f.precipitation)))")
+                                    .font(.caption2).monospacedDigit()
+                            }
+                            .frame(width: colRain, alignment: .leading)
+
+                            // Wave
+                            if let h = f.waveHeight {
+                                VStack(spacing: 2) {
+                                    Text(String(format: "%.1fm", h))
+                                        .font(.caption2).fontWeight(.medium).monospacedDigit()
+                                    if let d = f.waveDirection {
+                                        Text("\(d)°")
+                                            .font(.caption2).foregroundColor(.secondary).monospacedDigit()
+                                    }
+                                }
+                                .frame(width: colWave, alignment: .leading)
+                            } else {
+                                Text("N/A")
+                                    .font(.caption2).foregroundColor(.secondary)
+                                    .frame(width: colWave, alignment: .leading)
+                            }
+
+                            // Fish
+                            Image(systemName: f.isGoodFishing ? "fish.fill" : "fish")
+                                .font(.caption2)
+                                .foregroundColor(f.isGoodFishing ? .green : .gray)
+                                .frame(width: colFish, alignment: .trailing)
+                        }
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(6)
+                    }
                 }
+
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)

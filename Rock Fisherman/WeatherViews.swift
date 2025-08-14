@@ -853,9 +853,36 @@ class FishingNewsViewModel: ObservableObject {
 
         func isLocal(urlString: String?, textLower: String, strictLoc: [String]) -> Bool {
             if strictLoc.isEmpty { return true }
-            // Require mention of suburb/city/state token in text (case-insensitive)
+            // 1) Direct mention in title/description
             if strictLoc.contains(where: { textLower.contains($0) }) { return true }
-            // No generic ".au" host fallback; enforce locality tokens only
+
+            // 2) Host/path heuristics for NSW local outlets or NSW-tagged paths
+            guard let urlString, let u = URL(string: urlString) else { return false }
+            let host = (u.host ?? "").lowercased()
+            let path = u.path.lowercased()
+
+            // Known NSW/Sydney local outlets
+            let nswLocalHosts: Set<String> = [
+                "www.smh.com.au", "smh.com.au", // Sydney Morning Herald
+                "www.dailytelegraph.com.au", "dailytelegraph.com.au",
+                "www.manlyobserver.com.au", "manlyobserver.com.au",
+                "www.northernbeachesreview.com.au", "northernbeachesreview.com.au",
+                "www.northernbeachesadvocate.com.au", "northernbeachesadvocate.com.au",
+                "www.northernbeaches.nsw.gov.au", "northernbeaches.nsw.gov.au"
+            ]
+            if nswLocalHosts.contains(host) { return true }
+
+            // ABC NSW routing in path or NSW/Sydney terms in URL path
+            let pathHints: [String] = [
+                "/news/nsw/", "/news/sydney/", "northern-beaches", "manly", "dee-why", "narrabeen",
+                "pittwater", "avalon", "bilgola", "newport", "palm-beach", "clareville", "collaroy", "mona-vale"
+            ]
+            if pathHints.contains(where: { path.contains($0) }) { return true }
+
+            // 3) Australian domains with NSW terms in URL
+            if host.hasSuffix(".au") && strictLoc.contains(where: { path.contains($0.replacingOccurrences(of: " ", with: "-")) }) {
+                return true
+            }
             return false
         }
 

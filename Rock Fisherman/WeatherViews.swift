@@ -725,7 +725,7 @@ class FishingNewsViewModel: ObservableObject {
 				return t != "australia" && t != "au"
 			}
 		let limitedTokens = Array(placeTokens.prefix(12))
-		let baseTerms = "(fishing OR angler OR fisherman OR \"fishing report\" OR \"catch report\" OR \"live report\" OR \"fishing competition\" OR \"bag limit\" OR \"NSW Fisheries\" OR snapper OR bream OR flathead OR whiting OR kingfish OR salmon)"
+		let baseTerms = "(fishing OR angler OR fisherman OR fisheries OR \"fishing report\" OR \"catch report\" OR \"fishing competition\" OR \"bag limit\")"
 
         // Strict locality tokens: use suburb/city + state and nearby region hints; exclude generic country-only
         let strictLocationTokensLower: [String] = {
@@ -926,7 +926,38 @@ class FishingNewsViewModel: ObservableObject {
                             if a.1 != b.1 { return a.1 > b.1 }
                             return a.0.publishedAt > b.0.publishedAt
                         }
-                    let keptArticles = kept.map { $0.0 }
+                    var keptArticles = kept.map { $0.0 }
+#if DEBUG
+                    if keptArticles.isEmpty {
+                        print("[News] kept=0; attempting relaxed NSW fallback matching…")
+                    }
+#endif
+                    if keptArticles.isEmpty {
+                        // Relaxed fallback: accept NSW/Sydney mentions in text or NSW path hints/hosts
+                        let suburbSlugs: [String] = [
+                            "northern-beaches","pittwater","manly","dee-why","narrabeen","newport",
+                            "avalon","bilgola","mona-vale","palm-beach","clareville","collaroy"
+                        ]
+                        let fallback = scored.compactMap { pair -> FishingArticle? in
+                            let a = pair.0
+                            let tl = (a.title + " " + a.description).lowercased()
+                            if tl.contains("sydney") || tl.contains("nsw") { return a }
+                            if let u = URL(string: a.url) {
+                                let host = (u.host ?? "").lowercased()
+                                let path = u.path.lowercased()
+                                if host.hasSuffix(".au") && (path.contains("/news/nsw/") || path.contains("/news/sydney/") || suburbSlugs.contains(where: { path.contains($0) })) {
+                                    return a
+                                }
+                            }
+                            return nil
+                        }
+                        if !fallback.isEmpty {
+                            keptArticles = Array(fallback.prefix(10))
+#if DEBUG
+                            print("[News] fallback kept=\(keptArticles.count)")
+#endif
+                        }
+                    }
 #if DEBUG
                     print("[News] kept=\(keptArticles.count) after filtering")
                     for a in keptArticles.prefix(5) {

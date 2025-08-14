@@ -360,9 +360,19 @@ struct HourlyForecastView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(6)
 
-                    // Rows
-                    ForEach(next48HoursForecast, id: \.id) { f in
-                        GridRow {
+                    // Rows with day headers
+                    ForEach(next48Items) { item in
+                        if let title = item.headerTitle {
+                            GridRow {
+                                Text(title)
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 6)
+                            }
+                            .gridCellColumns(8)
+                        } else if let f = item.forecast {
+                            GridRow {
                             // Time
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(f.formattedTime)
@@ -432,10 +442,11 @@ struct HourlyForecastView: View {
                                 .font(.caption2)
                                 .foregroundColor(f.isGoodFishing ? .green : .gray)
                                 .frame(width: colFish, alignment: .trailing)
+                            }
+                            .padding(.vertical, 6)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(6)
                         }
-                        .padding(.vertical, 6)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(6)
                     }
                 }
 
@@ -456,6 +467,46 @@ struct HourlyForecastView: View {
             }
             .prefix(48)
             .map { $0 }
+    }
+
+    private struct HourlyListItem: Identifiable {
+        let id: String
+        let headerTitle: String?
+        let forecast: HourlyForecast?
+    }
+
+    private var next48Items: [HourlyListItem] {
+        var items: [HourlyListItem] = []
+        var lastDayKey: String? = nil
+        for f in next48HoursForecast {
+            let dayKey = String(f.time.prefix(10)) // yyyy-MM-dd
+            if dayKey != lastDayKey {
+                let title = formatDayHeader(from: f.time)
+                items.append(HourlyListItem(id: "hdr-\(dayKey)", headerTitle: title, forecast: nil))
+                lastDayKey = dayKey
+            }
+            items.append(HourlyListItem(id: f.id.uuidString, headerTitle: nil, forecast: f))
+        }
+        return items
+    }
+
+    private func formatDayHeader(from iso: String) -> String {
+        let inFmt = DateFormatter()
+        inFmt.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        guard let date = inFmt.date(from: iso) else { return "" }
+        let cal = Calendar.current
+        let day = cal.component(.day, from: date)
+        let ord: String
+        switch day % 100 {
+        case 11,12,13: ord = "th"
+        default:
+            switch day % 10 { case 1: ord = "st"; case 2: ord = "nd"; case 3: ord = "rd"; default: ord = "th" }
+        }
+        let weekdayFmt = DateFormatter(); weekdayFmt.dateFormat = "EEEE"
+        let monthFmt = DateFormatter(); monthFmt.dateFormat = "MMMM"
+        let weekday = weekdayFmt.string(from: date)
+        let month = monthFmt.string(from: date)
+        return "\(weekday) \(day)\(ord) \(month)"
     }
 
     private func parseForecastTime(_ timeString: String) -> Date? {

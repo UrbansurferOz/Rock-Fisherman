@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var locationManager = LocationManager()
     @StateObject private var weatherService = WeatherService()
     @State private var selectedTab = 0
@@ -88,6 +89,16 @@ struct ContentView: View {
             }
             if let location = locationManager.location {
                 Task { await weatherService.fetchWeather(for: location) }
+            }
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .active {
+                // Request a fresh location fix when returning to foreground
+                locationManager.requestLocation()
+                // Also refresh immediately using the last known location
+                if let location = locationManager.location {
+                    Task { await weatherService.fetchWeather(for: location) }
+                }
             }
         }
         .onChange(of: locationManager.hasSelectedLocation) { oldValue, hasSelected in

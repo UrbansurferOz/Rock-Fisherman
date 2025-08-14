@@ -51,7 +51,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 #if DEBUG
             print("[Loc] authorized, requesting one-shot location fix")
 #endif
-            locationManager.requestLocation()
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.locationManager.requestLocation()
+            }
         case .denied, .restricted:
             DispatchQueue.main.async { self.isLoading = false }
         @unknown default:
@@ -148,7 +150,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 print("[Loc] now authorized; requesting location due to pending user action")
 #endif
                 self.pendingRequestAfterAuth = false
-                self.locationManager.requestLocation()
+                DispatchQueue.global(qos: .userInitiated).async {
+                    self.locationManager.requestLocation()
+                }
             }
         }
     }

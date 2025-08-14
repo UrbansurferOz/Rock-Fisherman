@@ -6,6 +6,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
     private let geocoder = CLGeocoder()
     private var lastLocationTimestamp: Date?
+    // Track when the user explicitly requested current location so we can
+    // request a fix after permission is granted
+    private var pendingRequestAfterAuth = false
     
     @Published var location: CLLocation?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
@@ -22,37 +25,29 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func requestLocation() {
-        DispatchQueue.main.async {
-            self.isLoading = true
+        // Update UI state on main
+        DispatchQueue.main.async { self.isLoading = true }
 
-            guard CLLocationManager.locationServicesEnabled() else {
-                // Debug logs removed
-                self.isLoading = false
-                return
-            }
+        guard CLLocationManager.locationServicesEnabled() else {
+            DispatchQueue.main.async { self.isLoading = false }
+            return
+        }
 
-            let status: CLAuthorizationStatus = self.locationManager.authorizationStatus
+        let status: CLAuthorizationStatus = locationManager.authorizationStatus
+        DispatchQueue.main.async { self.authorizationStatus = status }
 
-            // Keep our published status in sync with the system value
-            self.authorizationStatus = status
-
-            switch status {
-            case .notDetermined:
-                // Debug logs removed
-                self.locationManager.requestWhenInUseAuthorization()
-            case .authorizedWhenInUse, .authorizedAlways:
-                // If we have a recent cached location (<3 min), reuse it immediately for speed
-                // Always request a fresh fix so the user sees an update even if location is unchanged.
-                // We'll still use cached quickly if it arrives later via delegate.
-                // Debug logs removed
-                self.locationManager.requestLocation()
-            case .denied, .restricted:
-                // Debug logs removed
-                self.isLoading = false
-            @unknown default:
-                // Debug logs removed
-                self.isLoading = false
-            }
+        switch status {
+        case .notDetermined:
+            // Remember that the user explicitly asked for a location so we can
+            // request it once permission changes to authorized
+            pendingRequestAfterAuth = true
+            locationManager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
+            locationManager.requestLocation()
+        case .denied, .restricted:
+            DispatchQueue.main.async { self.isLoading = false }
+        @unknown default:
+            DispatchQueue.main.async { self.isLoading = false }
         }
     }
     
@@ -135,8 +130,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 return
             }
 
-            // Do not auto-request; wait until user explicitly selects current location
-            // Debug logs removed
+            // If the user explicitly tapped "Use Current Location" while notDetermined,
+            // request a fresh fix now that we are authorized.
+            if (status == .authorizedWhenInUse || status == .authorizedAlways) && self.pendingRequestAfterAuth {
+                self.pendingRequestAfterAuth = false
+                self.locationManager.requestLocation()
+            }
         }
     }
 }

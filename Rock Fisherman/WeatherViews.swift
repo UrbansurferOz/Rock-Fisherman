@@ -288,12 +288,13 @@ struct HourlyForecastView: View {
     private let colFish: CGFloat = 20
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Next 12 Hours")
-                .font(.headline).fontWeight(.semibold)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Next 48 Hours")
+                    .font(.headline).fontWeight(.semibold)
 
-            // ONE grid for header + rows ➜ columns align perfectly
-            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
+                // ONE grid for header + rows ➜ columns align perfectly
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
 
                 // Header
                 GridRow {
@@ -333,7 +334,7 @@ struct HourlyForecastView: View {
                 .cornerRadius(6)
 
                 // Rows
-                ForEach(next12HoursForecast, id: \.id) { f in
+                ForEach(next48HoursForecast, id: \.id) { f in
                     GridRow {
                         // Time
                         VStack(alignment: .leading, spacing: 2) {
@@ -409,19 +410,19 @@ struct HourlyForecastView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
-    private var next12HoursForecast: [HourlyForecast] {
+    private var next48HoursForecast: [HourlyForecast] {
         let now = Date()
         return weatherService.hourlyForecast
             .filter { f in
                 guard let dt = parseForecastTime(f.time) else { return false }
                 return dt > now
             }
-            .prefix(12)
+            .prefix(48)
             .map { $0 }
     }
 

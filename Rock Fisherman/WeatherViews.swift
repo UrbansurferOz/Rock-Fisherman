@@ -281,9 +281,8 @@ struct HourlyForecastView: View {
                         .frame(width: colIcon + colTemp, alignment: .leading)
                         .gridCellColumns(2)
 
-                    Text("High\nTide")
+                    Text("Tide")
                         .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
-                        .multilineTextAlignment(.leading)
                         .frame(width: colTide, alignment: .leading)
 
                     Text("Wind")
@@ -342,13 +341,10 @@ struct HourlyForecastView: View {
                                 .frame(width: colTide, alignment: .leading)
                         }
 
-                        // Wind
-                        HStack(spacing: 2) {
-                            Image(systemName: "wind").font(.caption2).foregroundColor(.gray)
-                            Text("\(Int(round(f.windSpeed)))")
-                                .font(.caption2).monospacedDigit()
-                        }
-                        .frame(width: colWind, alignment: .leading)
+                        // Wind direction (e.g., ENE)
+                        Text(windDirectionString(degrees: f.windDirection))
+                            .font(.caption2)
+                            .frame(width: colWind, alignment: .leading)
 
                         // Rain
                         HStack(spacing: 2) {
@@ -403,6 +399,19 @@ struct HourlyForecastView: View {
             .map { $0 }
     }
 
+    private func windDirectionString(degrees: Int) -> String {
+        // Map 0..360 to 16-point compass without slashes (e.g., ENE, WSW)
+        let dirs = [
+            "N","NNE","NE","ENE",
+            "E","ESE","SE","SSE",
+            "S","SSW","SW","WSW",
+            "W","WNW","NW","NNW"
+        ]
+        var d = Double((degrees % 360 + 360) % 360)
+        d = fmod(d + 11.25, 360.0) // center ranges
+        let idx = Int(d / 22.5) % 16
+        return dirs[idx]
+    }
     private func parseForecastTime(_ timeString: String) -> Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"

@@ -415,18 +415,7 @@ struct HourlyForecastView: View {
         }
     }
 
-    private var next48HoursForecast: [HourlyForecast] {
-        let now = Date()
-        return weatherService.hourlyForecast
-            .filter { f in
-                guard let dt = parseForecastTime(f.time) else { return false }
-                return dt > now
-            }
-            .prefix(48)
-            .map { $0 }
-    }
-
-    // removed duplicate windDirectionString; using the shared helper above
+    // Helpers local to Hourly view
     private func parseForecastTime(_ timeString: String) -> Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"

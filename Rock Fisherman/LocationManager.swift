@@ -34,6 +34,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
 
         let status: CLAuthorizationStatus = locationManager.authorizationStatus
+#if DEBUG
+        print("[Loc] requestLocation() status=\(status.rawValue) pending=\(pendingRequestAfterAuth)")
+#endif
         DispatchQueue.main.async { self.authorizationStatus = status }
 
         switch status {
@@ -41,8 +44,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             // Remember that the user explicitly asked for a location so we can
             // request it once permission changes to authorized
             pendingRequestAfterAuth = true
+#if DEBUG
+            print("[Loc] requesting WHEN_IN_USE authorization")
+#endif
             locationManager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
+#if DEBUG
+            print("[Loc] authorized, requesting one-shot location fix")
+#endif
             locationManager.requestLocation()
         case .denied, .restricted:
             DispatchQueue.main.async { self.isLoading = false }
@@ -116,6 +125,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     // iOS 14+ preferred callback
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status: CLAuthorizationStatus = manager.authorizationStatus
+#if DEBUG
+        print("[Loc] didChangeAuthorization status=\(status.rawValue) pending=\(pendingRequestAfterAuth)")
+#endif
         handleAuthorizationChange(currentStatus: status)
     }
 
@@ -133,6 +145,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             // If the user explicitly tapped "Use Current Location" while notDetermined,
             // request a fresh fix now that we are authorized.
             if (status == .authorizedWhenInUse || status == .authorizedAlways) && self.pendingRequestAfterAuth {
+#if DEBUG
+                print("[Loc] now authorized; requesting location due to pending user action")
+#endif
                 self.pendingRequestAfterAuth = false
                 self.locationManager.requestLocation()
             }

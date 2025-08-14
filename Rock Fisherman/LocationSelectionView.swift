@@ -105,16 +105,13 @@ struct LocationSelectionView: View {
     }
     
     private func requestCurrentLocation() {
-        switch locationManager.authorizationStatus {
-        case .denied, .restricted:
+        let status = locationManager.authorizationStatus
+        if status == .denied || status == .restricted {
             showLocationPermissionAlert = true
-        case .notDetermined:
-            locationManager.requestLocation()
-        case .authorizedWhenInUse, .authorizedAlways:
-            locationManager.requestLocation()
-        @unknown default:
-            locationManager.requestLocation()
+            return
         }
+        // Always call into manager (it handles notDetermined vs authorized and defers the fix)
+        locationManager.requestLocation()
     }
 
     private func openSettings() {

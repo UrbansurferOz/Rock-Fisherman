@@ -57,11 +57,23 @@ struct CurrentWeatherView: View {
                                 value: "\(currentWeather.relativeHumidity)%"
                             )
                             
-                            WeatherDetailView(
-                                icon: "wind",
-                                title: "Wind",
-                                value: "\(Int(round(currentWeather.windSpeed))) km/h"
-                            )
+                            VStack(spacing: 8) {
+                                Image(systemName: "wind")
+                                    .font(.title2)
+                                    .foregroundColor(.blue)
+                                Text("Wind")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                VStack(spacing: 0) {
+                                    Text("\(Int(round(currentWeather.windSpeed))) km/h")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    Text(windDirectionString(degrees: currentWeather.windDirection))
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
                         }
                         
                         // Wave Information
@@ -477,7 +489,7 @@ struct DailyForecastView: View {
                                         Image(systemName: "wind")
                                             .font(.caption)
                                             .foregroundColor(.gray)
-                                        Text("\(Int(round(forecast.maxWindSpeed))) km/h")
+                                        Text("\(windDirectionString(degrees: forecast.windDirection)) \(Int(round(forecast.maxWindSpeed))) km/h")
                                             .font(.caption)
                                     }
                                     

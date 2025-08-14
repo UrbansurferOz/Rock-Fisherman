@@ -43,7 +43,7 @@ class WeatherService: ObservableObject {
     }
     
     private func fetchWeatherData(for location: CLLocation) async {
-        let urlString = "\(baseURL)/forecast?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,weather_code&timezone=auto"
+        let urlString = "\(baseURL)/forecast?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,weather_code&timezone=auto"
         
         guard let url = URL(string: urlString) else {
             await MainActor.run {
@@ -523,6 +523,7 @@ struct DailyResponse: Codable {
     let temperature2mMin: [Double]
     let precipitationSum: [Double]
     let windSpeed10mMax: [Double]
+    let windDirection10mDominant: [Int]
     let weatherCode: [Int]
     
     enum CodingKeys: String, CodingKey {
@@ -531,19 +532,21 @@ struct DailyResponse: Codable {
         case temperature2mMin = "temperature_2m_min"
         case precipitationSum = "precipitation_sum"
         case windSpeed10mMax = "wind_speed_10m_max"
+        case windDirection10mDominant = "wind_direction_10m_dominant"
         case weatherCode = "weather_code"
     }
     
     func toDailyForecasts() -> [DailyForecast] {
-        return zip(time, zip(temperature2mMax, zip(temperature2mMin, zip(precipitationSum, zip(windSpeed10mMax, weatherCode)))))
+        return zip(time, zip(temperature2mMax, zip(temperature2mMin, zip(precipitationSum, zip(windSpeed10mMax, zip(windDirection10mDominant, weatherCode))))))
             .map { date, data in
-                let (maxTemp, (minTemp, (precip, (windSpeed, weather)))) = data
+                let (maxTemp, (minTemp, (precip, (windSpeed, (windDir, weather))))) = data
                 return DailyForecast(
                     date: date,
                     maxTemp: maxTemp,
                     minTemp: minTemp,
                     precipitation: precip,
                     maxWindSpeed: windSpeed,
+                    windDirection: windDir,
                     weatherCode: weather,
                     waveHeight: nil, // Will be populated from wave data
                     waveDirection: nil,
@@ -693,6 +696,7 @@ struct DailyForecast: Identifiable, Codable {
     let minTemp: Double
     let precipitation: Double
     let maxWindSpeed: Double
+    let windDirection: Int
     let weatherCode: Int
     var waveHeight: Double?
     var waveDirection: Int?

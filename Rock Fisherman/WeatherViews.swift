@@ -784,11 +784,13 @@ class FishingNewsViewModel: ObservableObject {
 			}
 			return out
 		}()
-		let query = buildCappedQuery(baseTerms: baseTerms, tokens: dedupedTokens, maxChars: 480)
+        let cappedTokens = Array(dedupedTokens.prefix(12))
+        let query = buildCappedQuery(baseTerms: baseTerms, tokens: cappedTokens, maxChars: 420)
 		// Encoded query not needed explicitly; URLComponents handles encoding
 #if DEBUG
         print("[News] localityClause(\(localityClause.count))=\(localityClause)")
         print("[News] dedupedTokens(\(dedupedTokens.count))=\(dedupedTokens)")
+        print("[News] cappedTokens(\(cappedTokens.count))=\(cappedTokens)")
         print("[News] query=\(query)")
 #endif
 
@@ -806,13 +808,13 @@ class FishingNewsViewModel: ObservableObject {
         let dateParam = String(date30DaysAgo.prefix(10)) // yyyy-MM-dd
 
 		var comps = URLComponents(string: "https://newsapi.org/v2/everything")!
-		comps.queryItems = [
+        comps.queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "from", value: dateParam),
             URLQueryItem(name: "language", value: "en"),
             // Fetch by recency; we will re-rank by combined relevance + recency equally weighted
 			URLQueryItem(name: "sortBy", value: "publishedAt"),
-			URLQueryItem(name: "pageSize", value: "100"),
+            URLQueryItem(name: "pageSize", value: "50"),
 			URLQueryItem(name: "searchIn", value: "title,description,content")
         ]
 
@@ -823,7 +825,8 @@ class FishingNewsViewModel: ObservableObject {
         }
 		// Debug logs removed
 
-		var request = URLRequest(url: url)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
 		request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
 		// Debug logs removed
 

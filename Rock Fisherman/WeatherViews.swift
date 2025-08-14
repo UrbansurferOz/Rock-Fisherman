@@ -2,6 +2,20 @@ import SwiftUI
 import Combine
 import CoreLocation
 
+// Shared helper: map degrees (0-360) to 16-point compass without slashes (e.g., ENE)
+func windDirectionString(degrees: Int) -> String {
+    let dirs = [
+        "N","NNE","NE","ENE",
+        "E","ESE","SE","SSE",
+        "S","SSW","SW","WSW",
+        "W","WNW","NW","NNW"
+    ]
+    var d = Double((degrees % 360 + 360) % 360)
+    d = fmod(d + 11.25, 360.0)
+    let idx = Int(d / 22.5) % 16
+    return dirs[idx]
+}
+
 // MARK: - Current Weather View
 struct CurrentWeatherView: View {
     @ObservedObject var locationManager: LocationManager
@@ -411,19 +425,7 @@ struct HourlyForecastView: View {
             .map { $0 }
     }
 
-    private func windDirectionString(degrees: Int) -> String {
-        // Map 0..360 to 16-point compass without slashes (e.g., ENE, WSW)
-        let dirs = [
-            "N","NNE","NE","ENE",
-            "E","ESE","SE","SSE",
-            "S","SSW","SW","WSW",
-            "W","WNW","NW","NNW"
-        ]
-        var d = Double((degrees % 360 + 360) % 360)
-        d = fmod(d + 11.25, 360.0) // center ranges
-        let idx = Int(d / 22.5) % 16
-        return dirs[idx]
-    }
+    // removed duplicate windDirectionString; using the shared helper above
     private func parseForecastTime(_ timeString: String) -> Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
@@ -463,94 +465,7 @@ struct DailyForecastView: View {
                 } else {
                     LazyVStack(spacing: 12) {
                         ForEach(weatherService.dailyForecast) { forecast in
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(forecast.formattedDate)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    
-                                    Text("\(Int(round(forecast.minTemp)))° - \(Int(round(forecast.maxTemp)))°")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                
-                                Spacer()
-                                
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "drop.fill")
-                                            .font(.caption)
-                                            .foregroundColor(.blue)
-                                        Text("\(Int(round(forecast.precipitation)))mm")
-                                            .font(.caption)
-                                    }
-                                    
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "wind")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                        Text("\(windDirectionString(degrees: forecast.windDirection)) \(Int(round(forecast.maxWindSpeed))) km/h")
-                                            .font(.caption)
-                                    }
-                                    
-                                    // Wave data
-                                    if let waveHeight = forecast.waveHeight {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: "water.waves")
-                                                .font(.caption)
-                                                .foregroundColor(.blue)
-                                            Text("\(String(format: "%.1fm", waveHeight))")
-                                                .font(.caption)
-                                            
-                                            if let waveDirection = forecast.waveDirection {
-                                                Text("\(waveDirection)°")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                        }
-                                    }
-
-                                    // Tide extremes (compact single line)
-                                    if let hi = forecast.highTideHeight, let lo = forecast.lowTideHeight {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "arrow.up")
-                                                .font(.caption2)
-                                                .foregroundColor(.teal)
-                                            if let th = forecast.highTideTime {
-                                                Text("\(String(format: "%.1fm", hi)) \(th)")
-                                                    .lineLimit(1)
-                                            } else {
-                                                Text("\(String(format: "%.1fm", hi))")
-                                                    .lineLimit(1)
-                                            }
-                                            Text("  ")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            Image(systemName: "arrow.down")
-                                                .font(.caption2)
-                                                .foregroundColor(.teal)
-                                            if let tl = forecast.lowTideTime {
-                                                Text("\(String(format: "%.1fm", lo)) \(tl)")
-                                                    .lineLimit(1)
-                                            } else {
-                                                Text("\(String(format: "%.1fm", lo))")
-                                                    .lineLimit(1)
-                                            }
-                                        }
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.75)
-                                    }
-                                }
-                                
-                                Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
-                                    .font(.title3)
-                                    .foregroundColor(forecast.isGoodFishing ? .green : .gray)
-                            }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
+                            DailyRowView(forecast: forecast)
                         }
                     }
                 }
@@ -558,6 +473,90 @@ struct DailyForecastView: View {
             .padding()
             .padding(.bottom, 24)
         }
+    }
+}
+
+private struct DailyRowView: View {
+    let forecast: DailyForecast
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(forecast.formattedDate)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Text("\(Int(round(forecast.minTemp)))° - \(Int(round(forecast.maxTemp)))°")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "drop.fill")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                    Text("\(Int(round(forecast.precipitation)))mm")
+                        .font(.caption)
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "wind")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Text("\(windDirectionString(degrees: forecast.windDirection)) \(Int(round(forecast.maxWindSpeed))) km/h")
+                        .font(.caption)
+                }
+                if let waveHeight = forecast.waveHeight {
+                    HStack(spacing: 8) {
+                        Image(systemName: "water.waves")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        Text("\(String(format: "%.1fm", waveHeight))")
+                            .font(.caption)
+                        if let waveDirection = forecast.waveDirection {
+                            Text("\(waveDirection)°")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                if let hi = forecast.highTideHeight, let lo = forecast.lowTideHeight {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up")
+                            .font(.caption2)
+                            .foregroundColor(.teal)
+                        if let th = forecast.highTideTime {
+                            Text("\(String(format: "%.1fm", hi)) \(th)")
+                                .lineLimit(1)
+                        } else {
+                            Text("\(String(format: "%.1fm", hi))")
+                                .lineLimit(1)
+                        }
+                        Text("  ")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Image(systemName: "arrow.down")
+                            .font(.caption2)
+                            .foregroundColor(.teal)
+                        if let tl = forecast.lowTideTime {
+                            Text("\(String(format: "%.1fm", lo)) \(tl)")
+                                .lineLimit(1)
+                        } else {
+                            Text("\(String(format: "%.1fm", lo))")
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                }
+            }
+            Image(systemName: forecast.isGoodFishing ? "fish.fill" : "fish")
+                .font(.title3)
+                .foregroundColor(forecast.isGoodFishing ? .green : .gray)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
     }
 }
 

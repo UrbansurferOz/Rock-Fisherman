@@ -80,15 +80,38 @@ struct ContentView: View {
             .tag(3)
         }
         .onAppear {
-            // First run: require an explicit user selection
-            // Subsequent runs: use the last selected location (persisted by LocationManager)
+            // Proactively prompt for location permission on first launch
+            switch locationManager.authorizationStatus {
+            case .notDetermined:
+                locationManager.requestLocation()
+            case .authorizedWhenInUse, .authorizedAlways:
+                if let location = locationManager.location {
+                    Task { await weatherService.fetchWeather(for: location) }
+                } else {
+                    locationManager.requestLocation()
+                }
+            case .denied, .restricted:
+                showingLocationSelection = true
+            @unknown default:
+                break
+            }
+
+            // Show selection sheet if no location has been chosen yet
             if !hasShownInitialLocationSelection && !locationManager.hasSelectedLocation {
                 showingLocationSelection = true
                 hasShownInitialLocationSelection = true
-                return
             }
-            if let location = locationManager.location {
-                Task { await weatherService.fetchWeather(for: location) }
+        }
+        .onChange(of: locationManager.authorizationStatus) { _, newStatus in
+            switch newStatus {
+            case .authorizedWhenInUse, .authorizedAlways:
+                locationManager.requestLocation()
+            case .denied, .restricted:
+                showingLocationSelection = true
+            case .notDetermined:
+                break
+            @unknown default:
+                break
             }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in

@@ -2,6 +2,44 @@ import SwiftUI
 import Combine
 import CoreLocation
 
+// MARK: - Shared Header Image
+struct HeaderImageView: View {
+    private let headerHeight: CGFloat = 150
+    var body: some View {
+        ZStack(alignment: .top) {
+            Image("HeaderImage")
+                .resizable()
+                .scaledToFill()
+                .frame(height: headerHeight)
+                .frame(maxWidth: .infinity)
+                .clipped()
+            LinearGradient(
+                colors: [Color.black.opacity(0.35), Color.clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: headerHeight)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+struct HeaderBackgroundModifier: ViewModifier {
+    private let headerHeight: CGFloat = 150
+    func body(content: Content) -> some View {
+        ZStack(alignment: .top) {
+            HeaderImageView()
+                .ignoresSafeArea(edges: .top)
+            content
+                .padding(.top, headerHeight)
+        }
+    }
+}
+
+extension View {
+    func headerBackground() -> some View { self.modifier(HeaderBackgroundModifier()) }
+}
+
 // Shared helper: map degrees (0-360) to 16-point compass without slashes (e.g., ENE)
 func windDirectionString(degrees: Int) -> String {
     let dirs = [
@@ -154,6 +192,7 @@ struct CurrentWeatherView: View {
             }
             .padding()
         }
+        .headerBackground()
     }
     
     private func weatherIcon(for code: Int) -> String {
@@ -556,6 +595,7 @@ struct DailyForecastView: View {
             .padding()
             .padding(.bottom, 24)
         }
+        .headerBackground()
     }
 }
 
@@ -1279,6 +1319,7 @@ struct WaveInfoView: View {
                 .cornerRadius(8)
             }
         }
+        .headerBackground()
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }

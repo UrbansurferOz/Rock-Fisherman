@@ -9,6 +9,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     // Track when the user explicitly requested current location so we can
     // request a fix after permission is granted
     private var pendingRequestAfterAuth = false
+    // Force accept next location update regardless of accuracy when user explicitly requests
+    private var forceAcceptNextLocationUpdate = false
     
     @Published var location: CLLocation?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
@@ -51,6 +53,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 #if DEBUG
             print("[Loc] authorized, requesting one-shot location fix")
 #endif
+            forceAcceptNextLocationUpdate = true
             DispatchQueue.global(qos: .userInitiated).async {
                 self.locationManager.requestLocation()
             }
@@ -87,10 +90,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         DispatchQueue.main.async {
             // Prefer high-accuracy/recency, but accept first update quickly to improve perceived speed
-            if self.location == nil || location.horizontalAccuracy <= (self.location?.horizontalAccuracy ?? .greatestFiniteMagnitude) {
+            if self.forceAcceptNextLocationUpdate || self.location == nil || location.horizontalAccuracy <= (self.location?.horizontalAccuracy ?? .greatestFiniteMagnitude) {
                 self.location = location
                 self.lastLocationTimestamp = Date()
                 self.hasSelectedLocation = true
+                self.forceAcceptNextLocationUpdate = false
 
                 // Reverse geocode to show a meaningful place name instead of a generic label
                 self.geocoder.reverseGeocodeLocation(location) { placemarks, _ in
@@ -150,6 +154,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 print("[Loc] now authorized; requesting location due to pending user action")
 #endif
                 self.pendingRequestAfterAuth = false
+                self.forceAcceptNextLocationUpdate = true
                 DispatchQueue.global(qos: .userInitiated).async {
                     self.locationManager.requestLocation()
                 }

@@ -36,23 +36,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         // Avoid querying manager.authorizationStatus on the main thread; use our stored value
         let status: CLAuthorizationStatus = self.authorizationStatus
-#if DEBUG
-        print("[Loc] requestLocation() status=\(status.rawValue) pending=\(pendingRequestAfterAuth)")
-#endif
 
         switch status {
         case .notDetermined:
             // Remember that the user explicitly asked for a location so we can
             // request it once permission changes to authorized
             pendingRequestAfterAuth = true
-#if DEBUG
-            print("[Loc] requesting WHEN_IN_USE authorization")
-#endif
             locationManager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
-#if DEBUG
-            print("[Loc] authorized, requesting one-shot location fix")
-#endif
             // Immediately reuse a recent cached location (<2 minutes) for faster perceived response
             if let lastTs = self.lastLocationTimestamp, let current = self.location {
                 if Date().timeIntervalSince(lastTs) < 120 {
@@ -139,9 +130,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     // iOS 14+ preferred callback
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status: CLAuthorizationStatus = manager.authorizationStatus
-#if DEBUG
-        print("[Loc] didChangeAuthorization status=\(status.rawValue) pending=\(pendingRequestAfterAuth)")
-#endif
         handleAuthorizationChange(currentStatus: status)
     }
 
@@ -159,9 +147,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             // If the user explicitly tapped "Use Current Location" while notDetermined,
             // request a fresh fix now that we are authorized.
             if (status == .authorizedWhenInUse || status == .authorizedAlways) && self.pendingRequestAfterAuth {
-#if DEBUG
-                print("[Loc] now authorized; requesting location due to pending user action")
-#endif
                 self.pendingRequestAfterAuth = false
                 self.forceAcceptNextLocationUpdate = true
                 DispatchQueue.global(qos: .userInitiated).async {

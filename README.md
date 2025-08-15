@@ -12,6 +12,7 @@ A comprehensive iOS fishing weather app built with SwiftUI that provides real-ti
 - **24‑hour hourly forecast** (aligned grid table)
 - **7‑day forecast** including daily wave max and tide highs/lows
 - **Automatic location detection** and robust country‑aware search
+- **Automatic foreground refresh**: when you return to the app, it requests a fresh location and reloads the latest weather, marine and tide data
 - **Automatic foreground refresh**: when you return to the app, it requests a fresh location and reloads the latest weather, wave and tide data
 
 ### 🎯 Fishing‑Specific Features

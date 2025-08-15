@@ -53,6 +53,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 #if DEBUG
             print("[Loc] authorized, requesting one-shot location fix")
 #endif
+            // Immediately reuse a recent cached location (<2 minutes) for faster perceived response
+            if let lastTs = self.lastLocationTimestamp, let current = self.location {
+                if Date().timeIntervalSince(lastTs) < 120 {
+                    DispatchQueue.main.async {
+                        // setLocation copies and re-publishes to trigger observers
+                        self.setLocation(current, name: self.selectedLocationName)
+                    }
+                }
+            }
             forceAcceptNextLocationUpdate = true
             DispatchQueue.global(qos: .userInitiated).async {
                 self.locationManager.requestLocation()

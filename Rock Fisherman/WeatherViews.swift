@@ -1,18 +1,30 @@
 import SwiftUI
 import Combine
 import CoreLocation
+import UIKit
 
 // MARK: - Shared Header Image
 struct HeaderImageView: View {
     private let headerHeight: CGFloat = 150
     var body: some View {
         ZStack(alignment: .top) {
-            Image("HeaderImage")
-                .resizable()
-                .scaledToFill()
+            if let ui = UIImage(named: "HeaderImage") {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill() // Fill width, crop overflow
+                    .frame(height: headerHeight)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+            } else {
+                // Fallback if asset missing: subtle gradient bar (no push without padding, handled below)
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.35), Color.cyan.opacity(0.2)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
                 .frame(height: headerHeight)
                 .frame(maxWidth: .infinity)
-                .clipped()
+            }
             LinearGradient(
                 colors: [Color.black.opacity(0.35), Color.clear],
                 startPoint: .top,
@@ -27,11 +39,14 @@ struct HeaderImageView: View {
 struct HeaderBackgroundModifier: ViewModifier {
     private let headerHeight: CGFloat = 150
     func body(content: Content) -> some View {
-        ZStack(alignment: .top) {
-            HeaderImageView()
-                .ignoresSafeArea(edges: .top)
+        let hasImage = UIImage(named: "HeaderImage") != nil
+        return ZStack(alignment: .top) {
+            if hasImage {
+                HeaderImageView()
+                    .ignoresSafeArea(edges: .top)
+            }
             content
-                .padding(.top, headerHeight)
+                .padding(.top, hasImage ? headerHeight : 0)
         }
     }
 }

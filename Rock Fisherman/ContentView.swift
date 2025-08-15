@@ -48,6 +48,16 @@ struct ContentView: View {
                 HourlyForecastView(weatherService: weatherService)
                     .navigationTitle("Hourly Forecast")
                     .navigationBarTitleDisplayMode(.large)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingLocationSelection = true
+                            } label: {
+                                Image(systemName: "location.circle")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
             }
             .tabItem {
                 Image(systemName: "clock")
@@ -60,6 +70,16 @@ struct ContentView: View {
                 DailyForecastView(weatherService: weatherService)
                     .navigationTitle("7-Day Forecast")
                     .navigationBarTitleDisplayMode(.large)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingLocationSelection = true
+                            } label: {
+                                Image(systemName: "location.circle")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
             }
             .tabItem {
                 Image(systemName: "calendar")
@@ -72,6 +92,16 @@ struct ContentView: View {
                 FishingNewsView(locationManager: locationManager)
                     .navigationTitle("Fishing News")
                     .navigationBarTitleDisplayMode(.large)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingLocationSelection = true
+                            } label: {
+                                Image(systemName: "location.circle")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
             }
             .tabItem {
                 Image(systemName: "newspaper")

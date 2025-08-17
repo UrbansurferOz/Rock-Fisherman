@@ -1552,7 +1552,7 @@ private struct TideChartModel {
     let yTicks: [YTick]
 
     init(samples: [(Date, Double)], spanHours: Int, endAtNow: Bool, rect: CGRect) {
-        var dbg: [String] = []
+        let dbg: [String] = []
         let now = Date()
 
         // 1) Choose the 24h window (centered around "now" to look like the screenshot)

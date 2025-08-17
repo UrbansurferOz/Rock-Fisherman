@@ -133,14 +133,14 @@ class WeatherService: ObservableObject {
                     case .notAvailable:
                         let envKey = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
                         let plistKey = (Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let envInfo = envKey == nil ? "nil" : "len=\(envKey!.count)"
-                        let plistInfo = plistKey == nil ? "nil" : "len=\(plistKey!.count)"
+                        _ = envKey == nil ? "nil" : "len=\(envKey!.count)"
+                        _ = plistKey == nil ? "nil" : "len=\(plistKey!.count)"
                         // Debug logs removed
                         self.nearestWaveLocation = "Tide data unavailable (missing API key). Add WORLDTIDES_API_KEY in Scheme or Info.plist."
                     case .http(let code):
                         // Debug logs removed
                         self.nearestWaveLocation = "Tide service HTTP \(code)"
-                    case .decode(let msg):
+                    case .decode(_):
                         // Debug logs removed
                         self.nearestWaveLocation = "Tide data format error"
                     }

@@ -268,7 +268,7 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
 
         group.notify(queue: .main) {
             guard generation == self.currentSearchGeneration, currentFragment == self.lastQuery else { return }
-            var results = self.filterAndRankResults(placemarks, for: currentFragment)
+            let results = self.filterAndRankResults(placemarks, for: currentFragment)
             // If no AU results from completer-derived searches, run an AU-scoped direct search
             let hasAU = results.contains { $0.country.caseInsensitiveCompare(self.primaryCountryName) == .orderedSame }
             if !hasAU {

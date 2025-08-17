@@ -212,7 +212,9 @@ struct CurrentWeatherView: View {
                     .cornerRadius(16)
                 }
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.bottom)
+            .padding(.top, 5)
         }
         .headerBackground()
     }

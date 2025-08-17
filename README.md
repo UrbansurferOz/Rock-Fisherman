@@ -9,17 +9,23 @@ A comprehensive iOS fishing weather app built with SwiftUI that provides real-ti
 - **Marine data (waves)** from Open‑Meteo Marine (height, direction, period)
 - **Tide times and heights** from WorldTides™ (heights + daily extremes)
 - **Current conditions** including temperature, humidity, wind and precipitation
-- **24‑hour hourly forecast** (aligned grid table)
+- **48‑hour scrollable hourly forecast** with bold day headers (aligned grid: Time, Weather, Tide, Wind, Rain, Wave, Fish)
 - **7‑day forecast** including daily wave max and tide highs/lows
+- **Wind direction across views** using a 16‑point compass value (e.g., ENE)
 - **Automatic location detection** and robust country‑aware search
-- **Automatic foreground refresh**: when you return to the app, it requests a fresh location and reloads the latest weather, marine and tide data
 - **Automatic foreground refresh**: when you return to the app, it requests a fresh location and reloads the latest weather, wave and tide data
 
 ### 🎯 Fishing‑Specific Features
 - **Fishing condition scoring** based on weather parameters
 - **Optimal fishing indicators** for temperature, wind, and precipitation
 - **Visual fishing status** with color-coded conditions (Excellent, Good, Fair, Poor)
-- **Fishing news & live catch reports** (last 30 days, biased to ~50 km of selected location) with 1‑hour caching (no external debug logging)
+- **Fishing news & live catch reports** (last 30 days, locality‑aware for suburb/city/state) with 1‑hour caching (no external debug logging)
+
+### 🗞️ Local News Relevance
+- Builds query tokens from the selected place (suburb/city/state) and biases results to your area
+- Filters out irrelevant articles (e.g., non‑NSW content for Sydney suburbs) with NSW/VIC heuristics
+- Uses a strict filter first, then a relaxed NSW fallback if nothing is found
+- Caps query tokens and page size to avoid timeouts; 10s request timeout
 
 ### 📱 Modern iOS Design
 - **SwiftUI-based interface** following Apple's Human Interface Guidelines
@@ -55,6 +61,17 @@ Rock Fisherman/
 ├── Info.plist                  # App permissions and configuration
 └── Assets.xcassets/            # App icons and assets
 ```
+
+## 🆕 What’s New in v1
+
+- Automatic foreground refresh when returning to the app
+- Hourly forecast extended to the next 48 hours and made scrollable
+- Added wind direction column to hourly forecast and wind direction text to current conditions and daily forecast
+- Renamed "High Tide" column to **"Tide"**
+- Header image added to the top of the Conditions page, with the location title directly under the image
+- Local news relevance greatly improved for suburbs and towns (includes broader city/state where appropriate)
+- Location services responsiveness improvements and reduced main‑thread work
+- Removed development debug logs
 
 ## 🚀 Getting Started
 
@@ -101,10 +118,10 @@ Add your WorldTides key:
 1. In Xcode, open your target `Info` tab (or edit `Info.plist`).
 2. Add a String key named `WORLDTIDES_API_KEY` with your API key value.
 3. Build and run. The app will fetch hourly tide heights and daily extremes for the next 3 days.
-- News & Catch Reports (NewsAPI.org)
-  - Base URL: `https://newsapi.org/v2/everything`
-  - Requires API key (see below)
 
+News & Catch Reports (NewsAPI.org)
+- Base URL: `https://newsapi.org/v2/everything`
+- Requires API key (see below)
 
 Add your NewsAPI key (preferred: Scheme environment variable):
 1. In Xcode, select Product → Scheme → Edit Scheme…
@@ -124,6 +141,14 @@ Notes for NewsAPI:
 - Responses are cached per‑location for 1 hour to reduce API usage and improve performance.
 
 Note: The previous Azure/Bing-powered news section has been removed while we evaluate alternative providers.
+
+### Header Image (Conditions screen)
+To show the header image at the top of the Conditions page:
+1. In Xcode, open `Assets.xcassets` and add a new Image Set named `HeaderImage` (case sensitive).
+2. Import a PNG or JPEG image into the 1x slot (2x/3x optional). Make sure the image looks good when cropped.
+3. In the right‑hand pane, confirm Target Membership includes the app target.
+4. In Attributes, set Appearances to "Any".
+The app will automatically render this image and place the location title about 5pt below it.
 
 ### Performance & Logging
 - All weather, wave and tide requests run concurrently to minimize total load time.
@@ -145,7 +170,7 @@ Notes:
 - Weather code for conditions
 
 ### Forecast Data
-- **Hourly**: 24‑hour forecast with temperature, wind, precipitation, wave height and tide height
+- **Hourly**: 48‑hour forecast (scrollable) with temperature, wind (with 16‑point direction), precipitation, wave height and tide height
 - **Daily**: 7‑day forecast with min/max temperature, weather, wave height max, and tide high/low heights (with times)
 
 ### Fishing Condition Algorithm

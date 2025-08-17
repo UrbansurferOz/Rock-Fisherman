@@ -109,6 +109,13 @@ struct CurrentWeatherView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
+                // Header title directly under the header image
+                if let name = locationManager.selectedLocationName, !name.isEmpty {
+                    Text(name)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 // Location Status
                 LocationStatusView(
                     locationManager: locationManager,

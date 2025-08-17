@@ -38,6 +38,8 @@ struct HeaderImageView: View {
 
 struct HeaderBackgroundModifier: ViewModifier {
     private let headerHeight: CGFloat = 150
+    private let gapBelowHeader: CGFloat = 5
+    private let navBarHeightApprox: CGFloat = 44
     func body(content: Content) -> some View {
         let hasImage = UIImage(named: "HeaderImage") != nil
         return ZStack(alignment: .top) {
@@ -46,7 +48,7 @@ struct HeaderBackgroundModifier: ViewModifier {
                     .ignoresSafeArea(edges: .top)
             }
             content
-                .padding(.top, hasImage ? headerHeight : 0)
+                .padding(.top, hasImage ? max(0, headerHeight - navBarHeightApprox) + gapBelowHeader : 0)
         }
     }
 }
@@ -214,7 +216,6 @@ struct CurrentWeatherView: View {
             }
             .padding(.horizontal)
             .padding(.bottom)
-            .padding(.top, 5)
         }
         .headerBackground()
     }

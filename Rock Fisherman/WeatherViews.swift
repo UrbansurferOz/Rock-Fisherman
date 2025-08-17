@@ -236,23 +236,23 @@ struct LocationStatusView: View {
     var body: some View {
         VStack(spacing: 12) {
             if let locationName = locationManager.selectedLocationName {
-                HStack {
-                    Image(systemName: "mappin.circle.fill")
-                        .foregroundColor(.blue)
-                    
-                    Text(locationName)
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                    
-                    Button("Change") {
-                        showingLocationSelection = true
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Spacer()
                     }
-                    .buttonStyle(.bordered)
-                    .font(.caption)
+                    HStack {
+                        Image(systemName: "mappin.circle.fill")
+                            .foregroundColor(.blue)
+                        Text(locationName)
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Button("Change") { showingLocationSelection = true }
+                            .buttonStyle(.bordered)
+                            .font(.caption)
+                    }
                 }
-                .padding(.top, 8)
+                .padding(.top, 0)
             } else {
                 HStack {
                     Image(systemName: "location.slash")
@@ -610,7 +610,7 @@ struct DailyForecastView: View {
             .padding()
             .padding(.bottom, 24)
         }
-        .headerBackground()
+        // Remove header from Hourly
     }
 }
 
@@ -1189,6 +1189,7 @@ struct FishingNewsView: View {
             }
         }
         .padding()
+        // Remove header from Daily
         .onAppear {
             viewModel.fetchNews(for: locationManager.location, placeName: locationManager.selectedLocationName)
         }
@@ -1334,7 +1335,7 @@ struct WaveInfoView: View {
                 .cornerRadius(8)
             }
         }
-        .headerBackground()
+        // Remove header from News
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }

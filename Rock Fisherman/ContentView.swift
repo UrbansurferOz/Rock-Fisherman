@@ -24,8 +24,8 @@ struct ContentView: View {
                     weatherService: weatherService,
                     showingLocationSelection: $showingLocationSelection
                 )
-                .navigationTitle(locationManager.selectedLocationName ?? "Rock Fisherman")
-                .navigationBarTitleDisplayMode(.large)
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button {

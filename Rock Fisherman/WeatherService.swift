@@ -326,6 +326,23 @@ enum TideServiceError: Error {
 class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral()
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 12
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
+
+    private struct CacheEntry {
+        let timestamp: Date
+        let heights: [TideHeight]
+        let extremes: [DailyTide]
+        let copyright: String?
+    }
+
+    private static var cache: [String: CacheEntry] = [:]
+    private static let cacheTTL: TimeInterval = 10 * 60
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
         // Load from environment first, then Info.plist. Trim whitespace.
         let envKeyRaw = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
@@ -364,15 +381,43 @@ class TideService {
         }
 
         func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
-            let (d, r) = try await URLSession.shared.data(from: url)
-            guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
-            return (d, http)
+            var attempt = 0
+            var lastError: Error? = nil
+            while attempt < 3 {
+                do {
+                    let (d, r) = try await TideService.session.data(from: url)
+                    guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
+                    return (d, http)
+                } catch {
+                    lastError = error
+                    if let uerr = error as? URLError,
+                       [.timedOut, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed].contains(uerr.code) {
+                        attempt += 1
+                        let backoffMs = UInt64(300 * attempt)
+                        try? await Task.sleep(nanoseconds: backoffMs * 1_000_000)
+                        continue
+                    }
+                    throw error
+                }
+            }
+            throw lastError ?? TideServiceError.http(-1)
+        }
+
+        // Request full 7 days (needed for 7‑day forecast page)
+        let daysRequested = 7
+
+        // Build a cache key rounded to ~100m to avoid key explosion
+        let roundedLat = (latitude * 1000).rounded() / 1000
+        let roundedLon = (longitude * 1000).rounded() / 1000
+        let cacheKey = "\(roundedLat)_\(roundedLon)_\(today)_\(daysRequested)"
+        let cachedEntry = TideService.cache[cacheKey]
+        if let cachedEntry = cachedEntry, Date().timeIntervalSince(cachedEntry.timestamp) < TideService.cacheTTL {
+            return (cachedEntry.heights, cachedEntry.extremes, cachedEntry.copyright)
         }
 
         var decoded: WorldTidesCombined? = nil
-        if let url = buildURL(includeHeights: true, includeExtremes: true, days: 7) {
-            let (d, http) = try await request(url)
-            if http.statusCode == 200 {
+        if let url = buildURL(includeHeights: true, includeExtremes: true, days: daysRequested) {
+            if let (d, http) = try? await request(url), http.statusCode == 200 {
                 decoded = try? JSONDecoder().decode(WorldTidesCombined.self, from: d)
             }
         }
@@ -381,22 +426,26 @@ class TideService {
         if decoded == nil {
             var extremes: [WorldTideExtreme] = []
             var heights: [WorldTideHeight] = []
-            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: 7) {
-                let (d1, http1) = try await request(u1)
-                if http1.statusCode == 200 {
+            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: daysRequested) {
+                if let (d1, http1) = try? await request(u1), http1.statusCode == 200 {
                     if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d1) { extremes = tmp.extremes }
                 }
             }
-            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 7) {
-                let (d2, http2) = try await request(u2)
-                if http2.statusCode == 200 {
+            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: daysRequested) {
+                if let (d2, http2) = try? await request(u2), http2.statusCode == 200 {
                     if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights }
                 }
             }
             decoded = WorldTidesCombined(heights: heights, extremes: extremes, copyright: nil)
         }
 
-        guard let decoded = decoded else { throw TideServiceError.notAvailable }
+        guard let decoded = decoded else {
+            // If network failed, serve stale cache if available
+            if let cachedEntry = cachedEntry {
+                return (cachedEntry.heights, cachedEntry.extremes, cachedEntry.copyright)
+            }
+            throw TideServiceError.notAvailable
+        }
 
         // Map heights → TideHeight with local normalized format
         let outHeights: [TideHeight] = decoded.heights.map { h in
@@ -425,6 +474,8 @@ class TideService {
             return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
         }
 
+        // Save to cache and return
+        TideService.cache[cacheKey] = CacheEntry(timestamp: Date(), heights: outHeights, extremes: outExtremes, copyright: decoded.copyright)
         return (outHeights, outExtremes, decoded.copyright)
     }
 

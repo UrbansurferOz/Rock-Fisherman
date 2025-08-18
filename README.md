@@ -124,7 +124,7 @@ Tides (WorldTides™)
 Add your WorldTides key:
 1. In Xcode, open your target `Info` tab (or edit `Info.plist`).
 2. Add a String key named `WORLDTIDES_API_KEY` with your API key value.
-3. Build and run. The app will fetch hourly tide heights and daily extremes for the next 3 days.
+3. Build and run. The app will fetch hourly tide heights and daily extremes for the next 7 days.
 
 News & Catch Reports (NewsAPI.org)
 - Base URL: `https://newsapi.org/v2/everything`
@@ -163,7 +163,7 @@ The app will automatically render this image and place the location title about 
 
 
 Notes:
-- We request `heights&extremes&date=today&days=3&lat=<lat>&lon=<lon>&key=<key>`.
+- We request `heights&extremes&date=today&days=7&lat=<lat>&lon=<lon>&key=<key>`.
 - Times are rendered in local time; extremes populate daily High/Low values and times.
 - WorldTides requires copyright reproduction; see their docs at `https://www.worldtides.info/apidocs`.
 

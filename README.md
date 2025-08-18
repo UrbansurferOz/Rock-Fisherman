@@ -62,6 +62,13 @@ Rock Fisherman/
 └── Assets.xcassets/            # App icons and assets
 ```
 
+## 🆕 What’s New in v1.1
+
+- **Conditions header image refined**: location title now appears directly under the image with ~5pt spacing; header image limited to the Conditions page.
+- **Location services cleanup**: removed synchronous authorization checks on the main thread; rely on `locationManagerDidChangeAuthorization` and dispatch `requestLocation()` off-main for responsiveness.
+- **Stability fixes**: removed a duplicate `LocationManager` source file; addressed Codable/linter warnings (excluded auto-generated `id` from decoding, unused variables cleaned up).
+- **Documentation**: README updated with header image setup and latest behavior.
+
 ## 🆕 What’s New in v1
 
 - Automatic foreground refresh when returning to the app

@@ -110,21 +110,8 @@ struct ContentView: View {
             .tag(3)
         }
         .onAppear {
-            // Proactively prompt for location permission on first launch
-            switch locationManager.authorizationStatus {
-            case .notDetermined:
-                locationManager.requestLocation()
-            case .authorizedWhenInUse, .authorizedAlways:
-                if let location = locationManager.location {
-                    Task { await weatherService.fetchWeather(for: location) }
-                } else {
-                    locationManager.requestLocation()
-                }
-            case .denied, .restricted:
-                showingLocationSelection = true
-            @unknown default:
-                break
-            }
+            // Let the manager handle authorization flow; avoids synchronous status checks on main
+            locationManager.requestLocation()
 
             // Show selection sheet if no location has been chosen yet
             if !hasShownInitialLocationSelection && !locationManager.hasSelectedLocation {
@@ -148,10 +135,7 @@ struct ContentView: View {
             if newPhase == .active {
                 // Request a fresh location fix when returning to foreground
                 locationManager.requestLocation()
-                // Also refresh immediately using the last known location
-                if let location = locationManager.location {
-                    Task { await weatherService.fetchWeather(for: location) }
-                }
+                // Weather refresh will occur when location updates; avoid extra synchronous checks
             }
         }
         .onChange(of: locationManager.hasSelectedLocation) { oldValue, hasSelected in

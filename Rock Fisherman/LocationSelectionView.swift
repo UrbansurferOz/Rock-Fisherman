@@ -105,8 +105,8 @@ struct LocationSelectionView: View {
     }
     
     private func requestCurrentLocation() {
-        let status = locationManager.authorizationStatus
-        if status == .denied || status == .restricted {
+        // Do not synchronously branch on manager status; the manager will handle flow and callbacks
+        if locationManager.authorizationStatus == .denied || locationManager.authorizationStatus == .restricted {
             showLocationPermissionAlert = true
             return
         }

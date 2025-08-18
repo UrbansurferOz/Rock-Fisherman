@@ -648,6 +648,19 @@ struct HourlyForecast: Identifiable, Codable {
     var wavePeriod: Double?
     var tideHeight: Double?
     
+    enum CodingKeys: String, CodingKey {
+        case time
+        case temperature
+        case precipitation
+        case windSpeed
+        case windDirection
+        case weatherCode
+        case waveHeight
+        case waveDirection
+        case wavePeriod
+        case tideHeight
+    }
+    
     var formattedTime: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
@@ -705,6 +718,23 @@ struct DailyForecast: Identifiable, Codable {
     var lowTideHeight: Double?
     var highTideTime: String?
     var lowTideTime: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case date
+        case maxTemp
+        case minTemp
+        case precipitation
+        case maxWindSpeed
+        case windDirection
+        case weatherCode
+        case waveHeight
+        case waveDirection
+        case wavePeriod
+        case highTideHeight
+        case lowTideHeight
+        case highTideTime
+        case lowTideTime
+    }
     
     var formattedDate: String {
         let formatter = DateFormatter()
@@ -808,6 +838,13 @@ struct HourlyWaveData: Identifiable, Codable {
     let waveDirection: Int
     let wavePeriod: Double
     
+    enum CodingKeys: String, CodingKey {
+        case time
+        case waveHeight
+        case waveDirection
+        case wavePeriod
+    }
+    
     var formattedTime: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
@@ -868,6 +905,13 @@ struct DailyWaveData: Identifiable, Codable {
     let maxWaveHeight: Double
     let waveDirection: Int?
     let maxWavePeriod: Double?
+    
+    enum CodingKeys: String, CodingKey {
+        case date
+        case maxWaveHeight
+        case waveDirection
+        case maxWavePeriod
+    }
     
     var formattedDate: String {
         let formatter = DateFormatter()

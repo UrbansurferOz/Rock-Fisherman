@@ -363,6 +363,26 @@ class TideService {
             return c.url
         }
 
+        // Build a URL starting from a specific date string (yyyy-MM-dd)
+        func buildURLWithDate(_ startDate: String, includeHeights: Bool, includeExtremes: Bool, days: Int) -> URL? {
+            var c = URLComponents(string: "https://www.worldtides.info/api/v3")!
+            var items: [URLQueryItem] = []
+            if includeHeights { items.append(URLQueryItem(name: "heights", value: nil)) }
+            if includeExtremes { items.append(URLQueryItem(name: "extremes", value: nil)) }
+            items.append(contentsOf: [
+                URLQueryItem(name: "lat", value: String(latitude)),
+                URLQueryItem(name: "lon", value: String(longitude)),
+                URLQueryItem(name: "date", value: startDate),
+                URLQueryItem(name: "days", value: String(days)),
+                URLQueryItem(name: "localtime", value: "true"),
+                URLQueryItem(name: "datum", value: "LAT"),
+                URLQueryItem(name: "units", value: "metric"),
+                URLQueryItem(name: "key", value: apiKey)
+            ])
+            c.queryItems = items
+            return c.url
+        }
+
         func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
             let (d, r) = try await URLSession.shared.data(from: url)
             guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
@@ -381,12 +401,27 @@ class TideService {
         if decoded == nil {
             var extremes: [WorldTideExtreme] = []
             var heights: [WorldTideHeight] = []
-            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: 7) {
-                let (d1, http1) = try await request(u1)
-                if http1.statusCode == 200 {
-                    if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d1) { extremes = tmp.extremes }
+
+            // Chunk extremes into smaller requests (3d + 4d) to avoid very slow single calls
+            let calendar = Calendar.current
+            let baseDate = dateFormatter.date(from: today) ?? Date()
+            var offsetDays = 0
+            while offsetDays < 7 {
+                let span = min(3, 7 - offsetDays)
+                if let date = calendar.date(byAdding: .day, value: offsetDays, to: baseDate) {
+                    let startStr = dateFormatter.string(from: date)
+                    if let u = buildURLWithDate(startStr, includeHeights: false, includeExtremes: true, days: span) {
+                        let (dChunk, httpChunk) = try await request(u)
+                        if httpChunk.statusCode == 200 {
+                            if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: dChunk) {
+                                extremes.append(contentsOf: tmp.extremes)
+                            }
+                        }
+                    }
                 }
+                offsetDays += span
             }
+
             if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 7) {
                 let (d2, http2) = try await request(u2)
                 if http2.statusCode == 200 {

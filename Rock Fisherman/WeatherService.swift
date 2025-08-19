@@ -14,6 +14,7 @@ class WeatherService: ObservableObject {
     @Published var nearestWaveLocation: String?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var isLoadingTides = false
     // Tide data
     @Published var hourlyTide: [TideHeight] = []
     @Published var dailyTideExtremes: [DailyTide] = []
@@ -119,12 +120,14 @@ class WeatherService: ObservableObject {
         // Pre-flight diagnostics: log whether env/plist key is visible to the process
         // Debug logs removed
         do {
+            await MainActor.run { self.isLoadingTides = true }
             // Debug logs removed
             let (heights, extremes, notice) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
             await MainActor.run {
                 self.hourlyTide = heights
                 self.dailyTideExtremes = extremes
                 self.tideCopyright = notice
+                self.isLoadingTides = false
             }
         } catch {
             await MainActor.run {
@@ -150,6 +153,7 @@ class WeatherService: ObservableObject {
                 self.hourlyTide = []
                 self.dailyTideExtremes = []
                 self.tideCopyright = nil
+                self.isLoadingTides = false
             }
         }
     }

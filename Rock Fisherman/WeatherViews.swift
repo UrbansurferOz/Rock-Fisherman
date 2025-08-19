@@ -1406,6 +1406,14 @@ struct TideChartView: View {
                 Spacer()
             }
 
+            if weatherService.isLoadingTides {
+                HStack {
+                    ProgressView("Loading tides…")
+                }
+                .frame(maxWidth: .infinity, minHeight: 160)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
             GeometryReader { geo in
                 let rect = geo.size.rect.inset(by: .init(top: 10, left: 10, bottom: 26, right: 34))
                 let model = TideChartModel(
@@ -1488,6 +1496,7 @@ struct TideChartView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .frame(height: 160)
+            }
 
             // Next 24 Hours extremes list
             if let extremes = nextExtremes(from: weatherService.dailyTideExtremes) {

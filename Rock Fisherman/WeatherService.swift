@@ -345,6 +345,11 @@ class TideService {
     private static var cacheHeights: [String: (Date, [TideHeight])] = [:]
     private static var cacheExtremes: [String: (Date, [DailyTide], String?)] = [:]
     private static let cacheTTL: TimeInterval = 10 * 60
+
+    // Optional debug logging (enable by setting env var TIDE_DEBUG=1 in the Scheme)
+    private static let isDebug: Bool = ProcessInfo.processInfo.environment["TIDE_DEBUG"] == "1"
+    private func dbg(_ message: String) { if TideService.isDebug { print("[Tides] \(message)") } }
+
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
         // Load from environment first, then Info.plist. Trim whitespace.
         let envKeyRaw = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
@@ -406,8 +411,12 @@ class TideService {
             var lastError: Error? = nil
             while attempt < 3 {
                 do {
+                    let t0 = Date()
+                    dbg("GET \(TideService.redact(url)) attempt=\(attempt + 1)")
                     let (d, r) = try await TideService.session.data(from: url)
                     guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
+                    let ms = Int(Date().timeIntervalSince(t0) * 1000)
+                    dbg("HTTP \(http.statusCode) \(TideService.host(url)): \(ms)ms bytes=\(d.count)")
                     return (d, http)
                 } catch {
                     lastError = error
@@ -417,9 +426,11 @@ class TideService {
                         // Backoff: 0.4s, 0.8s, 1.2s
                         let delays: [UInt64] = [400, 800, 1200]
                         let backoffMs = delays[min(attempt - 1, delays.count - 1)]
+                        dbg("retryable error=\(uerr.code.rawValue) backoff=\(backoffMs)ms attempt=\(attempt)")
                         try? await Task.sleep(nanoseconds: backoffMs * 1_000_000)
                         continue
                     }
+                    dbg("request failed: \(error.localizedDescription)")
                     throw error
                 }
             }
@@ -439,6 +450,7 @@ class TideService {
         // Run extremes and heights in parallel, with caching and graceful fallback
         func fetchExtremes() async -> ([DailyTide], String?)? {
             if let cached = TideService.cacheExtremes[extremesKey], Date().timeIntervalSince(cached.0) < TideService.cacheTTL {
+                dbg("cache hit extremes key=\(extremesKey) age=\(Int(Date().timeIntervalSince(cached.0)))s days=\(cached.1.count)")
                 return (cached.1, cached.2)
             }
             guard let url = buildURL(includeHeights: false, includeExtremes: true, days: daysExtremes) else { return nil }
@@ -446,6 +458,7 @@ class TideService {
                 let (d, http) = try await request(url)
                 guard http.statusCode == 200 else { return nil }
                 if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d) {
+                    dbg("decoded extremes count=\(tmp.extremes.count)")
                     var byDay: [String: (highs: [TideExtreme], lows: [TideExtreme])] = [:]
                     for e in tmp.extremes {
                         let iso = Self.normalizeISOMinute(e.date)
@@ -464,16 +477,19 @@ class TideService {
                         return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
                     }
                     TideService.cacheExtremes[extremesKey] = (Date(), out, tmp.copyright)
+                    dbg("extremes days=\(out.count)")
                     return (out, tmp.copyright)
                 }
                 return nil
             } catch {
+                dbg("extremes error: \(error.localizedDescription)")
                 return nil
             }
         }
 
         func fetchHeights() async -> [TideHeight]? {
             if let cached = TideService.cacheHeights[heightsKey], Date().timeIntervalSince(cached.0) < TideService.cacheTTL {
+                dbg("cache hit heights key=\(heightsKey) age=\(Int(Date().timeIntervalSince(cached.0)))s count=\(cached.1.count)")
                 return cached.1
             }
             guard let url = buildURL(includeHeights: true, includeExtremes: false, days: daysHeights) else { return nil }
@@ -481,12 +497,14 @@ class TideService {
                 let (d, http) = try await request(url)
                 guard http.statusCode == 200 else { return nil }
                 if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d) {
+                    dbg("decoded heights count=\(tmp.heights.count)")
                     let out = tmp.heights.map { TideHeight(time: Self.normalizeISOMinute($0.date), height: $0.height) }
                     TideService.cacheHeights[heightsKey] = (Date(), out)
                     return out
                 }
                 return nil
             } catch {
+                dbg("heights error: \(error.localizedDescription)")
                 return nil
             }
         }
@@ -516,9 +534,11 @@ class TideService {
         }
 
         if finalHeights.isEmpty && finalExtremes.isEmpty {
+            dbg("no tide data available after requests and cache")
             throw TideServiceError.notAvailable
         }
 
+        dbg("returning heights=\(finalHeights.count) extremesDays=\(finalExtremes.count)")
         return (finalHeights, finalExtremes, copyright)
     }
 
@@ -546,6 +566,17 @@ class TideService {
         }
         return raw
     }
+
+    private static func redact(_ url: URL) -> String {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.absoluteString }
+        comps.queryItems = comps.queryItems?.map { item in
+            if item.name == "key" { return URLQueryItem(name: item.name, value: "***") }
+            return item
+        }
+        return comps.url?.absoluteString ?? url.absoluteString
+    }
+
+    private static func host(_ url: URL) -> String { url.host ?? "" }
 }
 
 // MARK: - WorldTides API DTOs

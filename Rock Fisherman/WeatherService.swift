@@ -328,20 +328,14 @@ class TideService {
     // Requires Info.plist key: WORLDTIDES_API_KEY
     private static let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 8
-        config.timeoutIntervalForResource = 12
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 25
         config.waitsForConnectivity = true
         return URLSession(configuration: config)
     }()
 
-    private struct CacheEntry {
-        let timestamp: Date
-        let heights: [TideHeight]
-        let extremes: [DailyTide]
-        let copyright: String?
-    }
-
-    private static var cache: [String: CacheEntry] = [:]
+    private static var cacheHeights: [String: (Date, [TideHeight])] = [:]
+    private static var cacheExtremes: [String: (Date, [DailyTide], String?)] = [:]
     private static let cacheTTL: TimeInterval = 10 * 60
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
         // Load from environment first, then Info.plist. Trim whitespace.
@@ -403,80 +397,101 @@ class TideService {
             throw lastError ?? TideServiceError.http(-1)
         }
 
-        // Request full 7 days (needed for 7‑day forecast page)
-        let daysRequested = 7
+        // Request full 7 days of extremes for daily view; only ~3 days of hourly heights needed
+        let daysExtremes = 7
+        let daysHeights = 3
 
-        // Build a cache key rounded to ~100m to avoid key explosion
+        // Build cache keys rounded to ~100m to avoid key explosion
         let roundedLat = (latitude * 1000).rounded() / 1000
         let roundedLon = (longitude * 1000).rounded() / 1000
-        let cacheKey = "\(roundedLat)_\(roundedLon)_\(today)_\(daysRequested)"
-        let cachedEntry = TideService.cache[cacheKey]
-        if let cachedEntry = cachedEntry, Date().timeIntervalSince(cachedEntry.timestamp) < TideService.cacheTTL {
-            return (cachedEntry.heights, cachedEntry.extremes, cachedEntry.copyright)
-        }
+        let heightsKey = "h_\(roundedLat)_\(roundedLon)_\(today)_\(daysHeights)"
+        let extremesKey = "e_\(roundedLat)_\(roundedLon)_\(today)_\(daysExtremes)"
 
-        var decoded: WorldTidesCombined? = nil
-        if let url = buildURL(includeHeights: true, includeExtremes: true, days: daysRequested) {
-            if let (d, http) = try? await request(url), http.statusCode == 200 {
-                decoded = try? JSONDecoder().decode(WorldTidesCombined.self, from: d)
+        // Run extremes and heights in parallel, with caching and graceful fallback
+        func fetchExtremes() async -> ([DailyTide], String?)? {
+            if let cached = TideService.cacheExtremes[extremesKey], Date().timeIntervalSince(cached.0) < TideService.cacheTTL {
+                return (cached.1, cached.2)
             }
-        }
-
-        // Fallback: request extremes and heights separately if combined failed
-        if decoded == nil {
-            var extremes: [WorldTideExtreme] = []
-            var heights: [WorldTideHeight] = []
-            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: daysRequested) {
-                if let (d1, http1) = try? await request(u1), http1.statusCode == 200 {
-                    if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d1) { extremes = tmp.extremes }
+            guard let url = buildURL(includeHeights: false, includeExtremes: true, days: daysExtremes) else { return nil }
+            do {
+                let (d, http) = try await request(url)
+                guard http.statusCode == 200 else { return nil }
+                if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d) {
+                    // Map to DailyTide
+                    var byDay: [String: (highs: [TideExtreme], lows: [TideExtreme])] = [:]
+                    for e in tmp.extremes {
+                        let iso = Self.normalizeISOMinute(e.date)
+                        let day = String(iso.prefix(10))
+                        if e.type.lowercased() == "high" {
+                            byDay[day, default: ([], [])].highs.append(TideExtreme(time: iso, height: e.height))
+                        } else {
+                            byDay[day, default: ([], [])].lows.append(TideExtreme(time: iso, height: e.height))
+                        }
+                    }
+                    let out: [DailyTide] = byDay.keys.sorted().map { day in
+                        var highs = byDay[day]?.highs ?? []
+                        var lows = byDay[day]?.lows ?? []
+                        highs.sort { $0.height > $1.height }
+                        lows.sort { $0.height < $1.height }
+                        return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
+                    }
+                    TideService.cacheExtremes[extremesKey] = (Date(), out, tmp.copyright)
+                    return (out, tmp.copyright)
                 }
+                return nil
+            } catch {
+                return nil
             }
-            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: daysRequested) {
-                if let (d2, http2) = try? await request(u2), http2.statusCode == 200 {
-                    if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights }
-                }
-            }
-            decoded = WorldTidesCombined(heights: heights, extremes: extremes, copyright: nil)
         }
 
-        guard let decoded = decoded else {
-            // If network failed, serve stale cache if available
-            if let cachedEntry = cachedEntry {
-                return (cachedEntry.heights, cachedEntry.extremes, cachedEntry.copyright)
+        func fetchHeights() async -> [TideHeight]? {
+            if let cached = TideService.cacheHeights[heightsKey], Date().timeIntervalSince(cached.0) < TideService.cacheTTL {
+                return cached.1
             }
+            guard let url = buildURL(includeHeights: true, includeExtremes: false, days: daysHeights) else { return nil }
+            do {
+                let (d, http) = try await request(url)
+                guard http.statusCode == 200 else { return nil }
+                if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d) {
+                    let out = tmp.heights.map { TideHeight(time: Self.normalizeISOMinute($0.date), height: $0.height) }
+                    TideService.cacheHeights[heightsKey] = (Date(), out)
+                    return out
+                }
+                return nil
+            } catch {
+                return nil
+            }
+        }
+
+        async let extremesPair = fetchExtremes()
+        async let heightsOnly = fetchHeights()
+        let extremesResult = await extremesPair
+        let heightsResult = await heightsOnly
+
+        // If both are nil, try stale caches
+        var finalHeights: [TideHeight] = []
+        var finalExtremes: [DailyTide] = []
+        var copyright: String? = nil
+
+        if let extremesPair = extremesResult {
+            finalExtremes = extremesPair.0
+            copyright = extremesPair.1
+        } else if let cached = TideService.cacheExtremes[extremesKey] {
+            finalExtremes = cached.1
+            copyright = cached.2
+        }
+
+        if let heights = heightsResult {
+            finalHeights = heights
+        } else if let cached = TideService.cacheHeights[heightsKey] {
+            finalHeights = cached.1
+        }
+
+        if finalHeights.isEmpty && finalExtremes.isEmpty {
             throw TideServiceError.notAvailable
         }
 
-        // Map heights → TideHeight with local normalized format
-        let outHeights: [TideHeight] = decoded.heights.map { h in
-            TideHeight(time: Self.normalizeISOMinute(h.date), height: h.height)
-        }
-
-        // Group extremes per day
-        var byDay: [String: (highs: [TideExtreme], lows: [TideExtreme])] = [:]
-        for e in decoded.extremes {
-            let iso = Self.normalizeISOMinute(e.date)
-            let day = String(iso.prefix(10))
-            if e.type.lowercased() == "high" {
-                byDay[day, default: ([], [])].highs.append(TideExtreme(time: iso, height: e.height))
-            } else {
-                byDay[day, default: ([], [])].lows.append(TideExtreme(time: iso, height: e.height))
-            }
-        }
-        let outExtremes: [DailyTide] = byDay.keys.sorted().map { day in
-            var highs = byDay[day]?.highs ?? []
-            var lows = byDay[day]?.lows ?? []
-            highs.sort { $0.height > $1.height }
-            lows.sort { $0.height < $1.height }
-            // Ensure at least placeholders so UI stays consistent
-            if highs.isEmpty { highs = [] }
-            if lows.isEmpty { lows = [] }
-            return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
-        }
-
-        // Save to cache and return
-        TideService.cache[cacheKey] = CacheEntry(timestamp: Date(), heights: outHeights, extremes: outExtremes, copyright: decoded.copyright)
-        return (outHeights, outExtremes, decoded.copyright)
+        return (finalHeights, finalExtremes, copyright)
     }
 
     private static func normalizeISOMinute(_ iso: String) -> String {

@@ -162,9 +162,13 @@ The app will automatically render this image and place the location title about 
 - Development-only debug logs have been removed for production builds to reduce console noise and improve performance.
 
 
-Notes:
-- We request `heights&extremes&date=today&days=7&lat=<lat>&lon=<lon>&key=<key>`.
-- Times are rendered in local time; extremes populate daily High/Low values and times.
+- Notes:
+- We request tide data in a robust way to handle slow provider responses:
+  - Extremes are fetched in small chunks (e.g., 3 days + remaining) and aggregated to 7 days
+  - Hourly heights are fetched in a single call
+  - This reduces long timeouts while preserving full 7‑day coverage
+  - Example full request: `heights&extremes&date=today&days=7&lat=<lat>&lon=<lon>&key=<key>`
+  - Times are rendered in local time; extremes populate daily High/Low values and times
 - WorldTides requires copyright reproduction; see their docs at `https://www.worldtides.info/apidocs`.
 
 ## 📊 Weather Data

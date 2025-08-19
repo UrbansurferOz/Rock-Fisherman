@@ -69,6 +69,13 @@ Rock Fisherman/
 - **Stability fixes**: removed a duplicate `LocationManager` source file; addressed Codable/linter warnings (excluded auto-generated `id` from decoding, unused variables cleaned up).
 - **Documentation**: README updated with header image setup and latest behavior.
 
+## 🆕 What’s New in v1.2
+
+- **Tides reliability**: Fetches daily extremes in small chunks (e.g., 3d + remaining) and aggregates to 7 days to reduce provider timeouts, while keeping hourly heights in a single request.
+- **Loading state**: Tide chart shows a dedicated spinner while tide data loads.
+- **Optional debugging**: Enable `TIDE_DEBUG=1` (Scheme env var) to log tide requests and timings without exposing the API key.
+- **Docs**: README updated to reflect chunked tide fetching and 7‑day coverage.
+
 ## 🆕 What’s New in v1
 
 - Automatic foreground refresh when returning to the app

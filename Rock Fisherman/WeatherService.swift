@@ -327,7 +327,7 @@ class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
     private static let session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral()
+        let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 8
         config.timeoutIntervalForResource = 12
         config.waitsForConnectivity = true

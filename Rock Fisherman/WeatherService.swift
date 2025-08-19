@@ -327,10 +327,18 @@ class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
     private static let session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 25
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 25
+        config.timeoutIntervalForResource = 45
         config.waitsForConnectivity = true
+        config.allowsConstrainedNetworkAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.httpMaximumConnectionsPerHost = 2
+        config.requestCachePolicy = .reloadRevalidatingCacheData
+        let cache = URLCache(memoryCapacity: 8 * 1024 * 1024, // 8MB
+                             diskCapacity: 32 * 1024 * 1024, // 32MB
+                             directory: nil)
+        config.urlCache = cache
         return URLSession(configuration: config)
     }()
 
@@ -396,7 +404,7 @@ class TideService {
         func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
             var attempt = 0
             var lastError: Error? = nil
-            while attempt < 3 {
+            while attempt < 4 {
                 do {
                     let (d, r) = try await TideService.session.data(from: url)
                     guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
@@ -406,7 +414,9 @@ class TideService {
                     if let uerr = error as? URLError,
                        [.timedOut, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed].contains(uerr.code) {
                         attempt += 1
-                        let backoffMs = UInt64(300 * attempt)
+                        // Exponential backoff: 0.5s, 1s, 2s, 3s
+                        let delays: [UInt64] = [500, 1000, 2000, 3000]
+                        let backoffMs = delays[min(attempt - 1, delays.count - 1)]
                         try? await Task.sleep(nanoseconds: backoffMs * 1_000_000)
                         continue
                     }
@@ -455,6 +465,8 @@ class TideService {
                     }
                 }
                 offset += span
+                // Small delay to avoid hammering the API when chunking
+                try? await Task.sleep(nanoseconds: 150_000_000)
             }
 
             guard !allExtremes.isEmpty else { return nil }

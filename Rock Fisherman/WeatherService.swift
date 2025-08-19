@@ -14,7 +14,6 @@ class WeatherService: ObservableObject {
     @Published var nearestWaveLocation: String?
     @Published var isLoading = false
     @Published var errorMessage: String?
-    @Published var isLoadingTides = false
     // Tide data
     @Published var hourlyTide: [TideHeight] = []
     @Published var dailyTideExtremes: [DailyTide] = []
@@ -120,14 +119,12 @@ class WeatherService: ObservableObject {
         // Pre-flight diagnostics: log whether env/plist key is visible to the process
         // Debug logs removed
         do {
-            await MainActor.run { self.isLoadingTides = true }
             // Debug logs removed
             let (heights, extremes, notice) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
             await MainActor.run {
                 self.hourlyTide = heights
                 self.dailyTideExtremes = extremes
                 self.tideCopyright = notice
-                self.isLoadingTides = false
             }
         } catch {
             await MainActor.run {
@@ -153,7 +150,6 @@ class WeatherService: ObservableObject {
                 self.hourlyTide = []
                 self.dailyTideExtremes = []
                 self.tideCopyright = nil
-                self.isLoadingTides = false
             }
         }
     }
@@ -330,26 +326,6 @@ enum TideServiceError: Error {
 class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
-    private static let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 12
-        config.timeoutIntervalForResource = 15
-        config.waitsForConnectivity = true
-        config.allowsConstrainedNetworkAccess = true
-        config.allowsExpensiveNetworkAccess = true
-        config.httpMaximumConnectionsPerHost = 2
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        return URLSession(configuration: config)
-    }()
-
-    private static var cacheHeights: [String: (Date, [TideHeight])] = [:]
-    private static var cacheExtremes: [String: (Date, [DailyTide], String?)] = [:]
-    private static let cacheTTL: TimeInterval = 10 * 60
-
-    // Optional debug logging (enable by setting env var TIDE_DEBUG=1 in the Scheme)
-    private static let isDebug: Bool = ProcessInfo.processInfo.environment["TIDE_DEBUG"] == "1"
-    private func dbg(_ message: String) { if TideService.isDebug { print("[Tides] \(message)") } }
-
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
         // Load from environment first, then Info.plist. Trim whitespace.
         let envKeyRaw = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
@@ -387,159 +363,69 @@ class TideService {
             return c.url
         }
 
-        func buildURLWithDate(date: String, includeHeights: Bool, includeExtremes: Bool, days: Int) -> URL? {
-            var c = URLComponents(string: "https://www.worldtides.info/api/v3")!
-            var items: [URLQueryItem] = []
-            if includeHeights { items.append(URLQueryItem(name: "heights", value: nil)) }
-            if includeExtremes { items.append(URLQueryItem(name: "extremes", value: nil)) }
-            items.append(contentsOf: [
-                URLQueryItem(name: "lat", value: String(latitude)),
-                URLQueryItem(name: "lon", value: String(longitude)),
-                URLQueryItem(name: "date", value: date),
-                URLQueryItem(name: "days", value: String(days)),
-                URLQueryItem(name: "localtime", value: "true"),
-                URLQueryItem(name: "datum", value: "LAT"),
-                URLQueryItem(name: "units", value: "metric"),
-                URLQueryItem(name: "key", value: apiKey)
-            ])
-            c.queryItems = items
-            return c.url
-        }
-
         func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
-            var attempt = 0
-            var lastError: Error? = nil
-            while attempt < 3 {
-                do {
-                    let t0 = Date()
-                    dbg("GET \(TideService.redact(url)) attempt=\(attempt + 1)")
-                    let (d, r) = try await TideService.session.data(from: url)
-                    guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
-                    let ms = Int(Date().timeIntervalSince(t0) * 1000)
-                    dbg("HTTP \(http.statusCode) \(TideService.host(url)): \(ms)ms bytes=\(d.count)")
-                    return (d, http)
-                } catch {
-                    lastError = error
-                    if let uerr = error as? URLError,
-                       [.timedOut, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed].contains(uerr.code) {
-                        attempt += 1
-                        // Backoff: 0.4s, 0.8s, 1.2s
-                        let delays: [UInt64] = [400, 800, 1200]
-                        let backoffMs = delays[min(attempt - 1, delays.count - 1)]
-                        dbg("retryable error=\(uerr.code.rawValue) backoff=\(backoffMs)ms attempt=\(attempt)")
-                        try? await Task.sleep(nanoseconds: backoffMs * 1_000_000)
-                        continue
-                    }
-                    dbg("request failed: \(error.localizedDescription)")
-                    throw error
+            let (d, r) = try await URLSession.shared.data(from: url)
+            guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
+            return (d, http)
+        }
+
+        var decoded: WorldTidesCombined? = nil
+        if let url = buildURL(includeHeights: true, includeExtremes: true, days: 7) {
+            let (d, http) = try await request(url)
+            if http.statusCode == 200 {
+                decoded = try? JSONDecoder().decode(WorldTidesCombined.self, from: d)
+            }
+        }
+
+        // Fallback: request extremes and heights separately if combined failed
+        if decoded == nil {
+            var extremes: [WorldTideExtreme] = []
+            var heights: [WorldTideHeight] = []
+            if let u1 = buildURL(includeHeights: false, includeExtremes: true, days: 7) {
+                let (d1, http1) = try await request(u1)
+                if http1.statusCode == 200 {
+                    if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d1) { extremes = tmp.extremes }
                 }
             }
-            throw lastError ?? TideServiceError.http(-1)
-        }
-
-        // Request full 7 days of extremes for daily view; only ~3 days of hourly heights needed
-        let daysExtremes = 7
-        let daysHeights = 3
-
-        // Build cache keys rounded to ~100m to avoid key explosion
-        let roundedLat = (latitude * 1000).rounded() / 1000
-        let roundedLon = (longitude * 1000).rounded() / 1000
-        let heightsKey = "h_\(roundedLat)_\(roundedLon)_\(today)_\(daysHeights)"
-        let extremesKey = "e_\(roundedLat)_\(roundedLon)_\(today)_\(daysExtremes)"
-
-        // Run extremes and heights in parallel, with caching and graceful fallback
-        func fetchExtremes() async -> ([DailyTide], String?)? {
-            if let cached = TideService.cacheExtremes[extremesKey], Date().timeIntervalSince(cached.0) < TideService.cacheTTL {
-                dbg("cache hit extremes key=\(extremesKey) age=\(Int(Date().timeIntervalSince(cached.0)))s days=\(cached.1.count)")
-                return (cached.1, cached.2)
-            }
-            guard let url = buildURL(includeHeights: false, includeExtremes: true, days: daysExtremes) else { return nil }
-            do {
-                let (d, http) = try await request(url)
-                guard http.statusCode == 200 else { return nil }
-                if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d) {
-                    dbg("decoded extremes count=\(tmp.extremes.count)")
-                    var byDay: [String: (highs: [TideExtreme], lows: [TideExtreme])] = [:]
-                    for e in tmp.extremes {
-                        let iso = Self.normalizeISOMinute(e.date)
-                        let day = String(iso.prefix(10))
-                        if e.type.lowercased() == "high" {
-                            byDay[day, default: ([], [])].highs.append(TideExtreme(time: iso, height: e.height))
-                        } else {
-                            byDay[day, default: ([], [])].lows.append(TideExtreme(time: iso, height: e.height))
-                        }
-                    }
-                    let out: [DailyTide] = byDay.keys.sorted().map { day in
-                        var highs = byDay[day]?.highs ?? []
-                        var lows = byDay[day]?.lows ?? []
-                        highs.sort { $0.height > $1.height }
-                        lows.sort { $0.height < $1.height }
-                        return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
-                    }
-                    TideService.cacheExtremes[extremesKey] = (Date(), out, tmp.copyright)
-                    dbg("extremes days=\(out.count)")
-                    return (out, tmp.copyright)
+            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 7) {
+                let (d2, http2) = try await request(u2)
+                if http2.statusCode == 200 {
+                    if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights }
                 }
-                return nil
-            } catch {
-                dbg("extremes error: \(error.localizedDescription)")
-                return nil
+            }
+            decoded = WorldTidesCombined(heights: heights, extremes: extremes, copyright: nil)
+        }
+
+        guard let decoded = decoded else { throw TideServiceError.notAvailable }
+
+        // Map heights → TideHeight with local normalized format
+        let outHeights: [TideHeight] = decoded.heights.map { h in
+            TideHeight(time: Self.normalizeISOMinute(h.date), height: h.height)
+        }
+
+        // Group extremes per day
+        var byDay: [String: (highs: [TideExtreme], lows: [TideExtreme])] = [:]
+        for e in decoded.extremes {
+            let iso = Self.normalizeISOMinute(e.date)
+            let day = String(iso.prefix(10))
+            if e.type.lowercased() == "high" {
+                byDay[day, default: ([], [])].highs.append(TideExtreme(time: iso, height: e.height))
+            } else {
+                byDay[day, default: ([], [])].lows.append(TideExtreme(time: iso, height: e.height))
             }
         }
-
-        func fetchHeights() async -> [TideHeight]? {
-            if let cached = TideService.cacheHeights[heightsKey], Date().timeIntervalSince(cached.0) < TideService.cacheTTL {
-                dbg("cache hit heights key=\(heightsKey) age=\(Int(Date().timeIntervalSince(cached.0)))s count=\(cached.1.count)")
-                return cached.1
-            }
-            guard let url = buildURL(includeHeights: true, includeExtremes: false, days: daysHeights) else { return nil }
-            do {
-                let (d, http) = try await request(url)
-                guard http.statusCode == 200 else { return nil }
-                if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: d) {
-                    dbg("decoded heights count=\(tmp.heights.count)")
-                    let out = tmp.heights.map { TideHeight(time: Self.normalizeISOMinute($0.date), height: $0.height) }
-                    TideService.cacheHeights[heightsKey] = (Date(), out)
-                    return out
-                }
-                return nil
-            } catch {
-                dbg("heights error: \(error.localizedDescription)")
-                return nil
-            }
+        let outExtremes: [DailyTide] = byDay.keys.sorted().map { day in
+            var highs = byDay[day]?.highs ?? []
+            var lows = byDay[day]?.lows ?? []
+            highs.sort { $0.height > $1.height }
+            lows.sort { $0.height < $1.height }
+            // Ensure at least placeholders so UI stays consistent
+            if highs.isEmpty { highs = [] }
+            if lows.isEmpty { lows = [] }
+            return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
         }
 
-        async let extremesPair = fetchExtremes()
-        async let heightsOnly = fetchHeights()
-        let extremesResult = await extremesPair
-        let heightsResult = await heightsOnly
-
-        // If both are nil, try stale caches
-        var finalHeights: [TideHeight] = []
-        var finalExtremes: [DailyTide] = []
-        var copyright: String? = nil
-
-        if let extremesPair = extremesResult {
-            finalExtremes = extremesPair.0
-            copyright = extremesPair.1
-        } else if let cached = TideService.cacheExtremes[extremesKey] {
-            finalExtremes = cached.1
-            copyright = cached.2
-        }
-
-        if let heights = heightsResult {
-            finalHeights = heights
-        } else if let cached = TideService.cacheHeights[heightsKey] {
-            finalHeights = cached.1
-        }
-
-        if finalHeights.isEmpty && finalExtremes.isEmpty {
-            dbg("no tide data available after requests and cache")
-            throw TideServiceError.notAvailable
-        }
-
-        dbg("returning heights=\(finalHeights.count) extremesDays=\(finalExtremes.count)")
-        return (finalHeights, finalExtremes, copyright)
+        return (outHeights, outExtremes, decoded.copyright)
     }
 
     private static func normalizeISOMinute(_ iso: String) -> String {
@@ -566,17 +452,6 @@ class TideService {
         }
         return raw
     }
-
-    private static func redact(_ url: URL) -> String {
-        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.absoluteString }
-        comps.queryItems = comps.queryItems?.map { item in
-            if item.name == "key" { return URLQueryItem(name: item.name, value: "***") }
-            return item
-        }
-        return comps.url?.absoluteString ?? url.absoluteString
-    }
-
-    private static func host(_ url: URL) -> String { url.host ?? "" }
 }
 
 // MARK: - WorldTides API DTOs

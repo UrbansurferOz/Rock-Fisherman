@@ -6,6 +6,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
     private let geocoder = CLGeocoder()
     private var lastLocationTimestamp: Date?
+    private let locDebug: Bool = ProcessInfo.processInfo.environment["LOC_DEBUG"] == "1"
     // Track when the user explicitly requested current location so we can
     // request a fix after permission is granted
     private var pendingRequestAfterAuth = false
@@ -30,23 +31,27 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         DispatchQueue.main.async { self.isLoading = true }
 
         guard CLLocationManager.locationServicesEnabled() else {
+            if locDebug { print("[Loc] location services disabled") }
             DispatchQueue.main.async { self.isLoading = false }
             return
         }
 
         // Avoid querying manager.authorizationStatus on the main thread; use our stored value
         let status: CLAuthorizationStatus = self.authorizationStatus
+        if locDebug { print("[Loc] requestLocation status=\(status.rawValue) hasSelected=\(self.hasSelectedLocation)") }
 
         switch status {
         case .notDetermined:
             // Remember that the user explicitly asked for a location so we can
             // request it once permission changes to authorized
             pendingRequestAfterAuth = true
+            if locDebug { print("[Loc] requesting when-in-use authorization") }
             locationManager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
             // Immediately reuse a recent cached location (<2 minutes) for faster perceived response
             if let lastTs = self.lastLocationTimestamp, let current = self.location {
                 if Date().timeIntervalSince(lastTs) < 120 {
+                    if locDebug { print("[Loc] reusing cached fix age=\(Int(Date().timeIntervalSince(lastTs)))s, triggering UI refresh") }
                     DispatchQueue.main.async {
                         // setLocation copies and re-publishes to trigger observers
                         self.setLocation(current, name: self.selectedLocationName)
@@ -54,18 +59,23 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 }
             }
             forceAcceptNextLocationUpdate = true
+            if locDebug { print("[Loc] requesting one-shot location fix (off-main)") }
             DispatchQueue.global(qos: .userInitiated).async {
                 self.locationManager.requestLocation()
             }
         case .denied, .restricted:
+            if locDebug { print("[Loc] authorization denied/restricted") }
             DispatchQueue.main.async { self.isLoading = false }
         @unknown default:
+            if locDebug { print("[Loc] unknown authorization status") }
             DispatchQueue.main.async { self.isLoading = false }
         }
     }
     
     func setLocation(_ location: CLLocation, name: String? = nil) {
-        // Debug logs removed
+        if locDebug {
+            print("[Loc] setLocation lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude), acc=\(location.horizontalAccuracy)")
+        }
         
         // Force a new instance so SwiftUI change handlers fire even if coords are the same
         let copied = CLLocation(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
@@ -91,6 +101,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         DispatchQueue.main.async {
             // Prefer high-accuracy/recency, but accept first update quickly to improve perceived speed
             if self.forceAcceptNextLocationUpdate || self.location == nil || location.horizontalAccuracy <= (self.location?.horizontalAccuracy ?? .greatestFiniteMagnitude) {
+                if self.locDebug { print("[Loc] didUpdateLocations lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude), acc=\(location.horizontalAccuracy)") }
                 self.location = location
                 self.lastLocationTimestamp = Date()
                 self.hasSelectedLocation = true
@@ -105,6 +116,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                             let country = p.country
                             let parts = [locality, admin, country].compactMap { $0 }.filter { !$0.isEmpty }
                             self.selectedLocationName = parts.isEmpty ? "Current Location" : parts.joined(separator: ", ")
+                            if self.locDebug { print("[Loc] reverse geocoded name=\(self.selectedLocationName ?? "-")") }
                         } else {
                             self.selectedLocationName = "Current Location"
                         }
@@ -118,7 +130,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         DispatchQueue.main.async {
             self.isLoading = false
-            // Debug logs removed
+            if self.locDebug { print("[Loc] didFailWithError: \(error.localizedDescription)") }
         }
     }
     
@@ -135,7 +147,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     private func handleAuthorizationChange(currentStatus status: CLAuthorizationStatus) {
         DispatchQueue.main.async {
-            // Debug logs removed
+            if self.locDebug { print("[Loc] authorization changed -> \(status.rawValue)") }
             self.authorizationStatus = status
 
             guard CLLocationManager.locationServicesEnabled() else {
@@ -149,6 +161,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             if (status == .authorizedWhenInUse || status == .authorizedAlways) && self.pendingRequestAfterAuth {
                 self.pendingRequestAfterAuth = false
                 self.forceAcceptNextLocationUpdate = true
+                if self.locDebug { print("[Loc] post-auth requesting location (off-main)") }
                 DispatchQueue.global(qos: .userInitiated).async {
                     self.locationManager.requestLocation()
                 }

@@ -135,7 +135,10 @@ struct ContentView: View {
             if newPhase == .active {
                 // Request a fresh location fix when returning to foreground
                 locationManager.requestLocation()
-                // Weather refresh will occur when location updates; avoid extra synchronous checks
+                // Failsafe: if we have a recent location already, proactively refresh weather/tides in case CL doesn't deliver another fix
+                if let loc = locationManager.location {
+                    Task { await weatherService.fetchWeather(for: loc) }
+                }
             }
         }
         .onChange(of: locationManager.hasSelectedLocation) { oldValue, hasSelected in

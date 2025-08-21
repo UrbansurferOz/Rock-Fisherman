@@ -18,6 +18,7 @@ class WeatherService: ObservableObject {
     @Published var hourlyTide: [TideHeight] = []
     @Published var dailyTideExtremes: [DailyTide] = []
     @Published var tideCopyright: String?
+    @Published var isLoadingTides: Bool = false
     
     private let baseURL = "https://api.open-meteo.com/v1"
     private let marineBaseURL = "https://marine-api.open-meteo.com/v1"
@@ -118,6 +119,7 @@ class WeatherService: ObservableObject {
         let tideService = TideService()
         // Pre-flight diagnostics: log whether env/plist key is visible to the process
         // Debug logs removed
+        await MainActor.run { self.isLoadingTides = true }
         do {
             // Debug logs removed
             let (heights, extremes, notice) = try await tideService.fetchTides(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
@@ -125,6 +127,7 @@ class WeatherService: ObservableObject {
                 self.hourlyTide = heights
                 self.dailyTideExtremes = extremes
                 self.tideCopyright = notice
+                self.isLoadingTides = false
             }
         } catch {
             await MainActor.run {
@@ -150,6 +153,7 @@ class WeatherService: ObservableObject {
                 self.hourlyTide = []
                 self.dailyTideExtremes = []
                 self.tideCopyright = nil
+                self.isLoadingTides = false
             }
         }
     }
@@ -327,6 +331,7 @@ class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
+        let tideDebug = ProcessInfo.processInfo.environment["TIDE_DEBUG"] == "1"
         // Load from environment first, then Info.plist. Trim whitespace.
         let envKeyRaw = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
         let plistKeyRaw = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
@@ -334,7 +339,14 @@ class TideService {
         let trimmed = combinedRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = TideService.sanitizeKey(trimmed)
         // Debug print of key (masked) + hash so the user can verify correctness
-        // Debug logs removed
+        if tideDebug {
+            let keyHash: String = {
+                guard !apiKey.isEmpty else { return "nil" }
+                let digest = SHA256.hash(data: Data(apiKey.utf8))
+                return digest.compactMap { String(format: "%02x", $0) }.joined().prefix(12).description
+            }()
+            print("[Tides] API key present: \(!apiKey.isEmpty), sha256=\(keyHash)")
+        }
         guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
 
         // Fetch hourly heights and extremes for 3 days starting today (UTC is fine; API returns ISO strings with offset)
@@ -384,8 +396,17 @@ class TideService {
         }
 
         func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
+            let start = Date()
+            if tideDebug {
+                let masked = url.absoluteString.replacingOccurrences(of: apiKey, with: "***")
+                print("[Tides] GET \(masked)")
+            }
             let (d, r) = try await URLSession.shared.data(from: url)
+            let durMs = Int(Date().timeIntervalSince(start) * 1000)
             guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
+            if tideDebug {
+                print("[Tides] <- status=\(http.statusCode) bytes=\(d.count) dur=\(durMs)ms")
+            }
             return (d, http)
         }
 
@@ -394,6 +415,13 @@ class TideService {
             let (d, http) = try await request(url)
             if http.statusCode == 200 {
                 decoded = try? JSONDecoder().decode(WorldTidesCombined.self, from: d)
+                if tideDebug {
+                    let hCount = (try? JSONDecoder().decode(WorldTidesCombined.self, from: d).heights.count) ?? -1
+                    let eCount = (try? JSONDecoder().decode(WorldTidesCombined.self, from: d).extremes.count) ?? -1
+                    print("[Tides] combined decode heights=\(hCount) extremes=\(eCount)")
+                }
+            } else if tideDebug {
+                print("[Tides] combined request failed status=\(http.statusCode)")
             }
         }
 
@@ -402,7 +430,7 @@ class TideService {
             var extremes: [WorldTideExtreme] = []
             var heights: [WorldTideHeight] = []
 
-            // Chunk extremes into smaller requests (3d + 4d) to avoid very slow single calls
+            // Chunk extremes into smaller requests (3-day chunks) to avoid very slow single calls
             let calendar = Calendar.current
             let baseDate = dateFormatter.date(from: today) ?? Date()
             var offsetDays = 0
@@ -415,7 +443,10 @@ class TideService {
                         if httpChunk.statusCode == 200 {
                             if let tmp = try? JSONDecoder().decode(WorldTidesCombined.self, from: dChunk) {
                                 extremes.append(contentsOf: tmp.extremes)
+                                if tideDebug { print("[Tides] extremes chunk start=\(startStr) days=\(span) decoded=\(tmp.extremes.count)") }
                             }
+                        } else if tideDebug {
+                            print("[Tides] extremes chunk failed status=\(httpChunk.statusCode) start=\(startStr) days=\(span)")
                         }
                     }
                 }
@@ -425,7 +456,9 @@ class TideService {
             if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 7) {
                 let (d2, http2) = try await request(u2)
                 if http2.statusCode == 200 {
-                    if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights }
+                    if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights; if tideDebug { print("[Tides] heights decoded=\(heights.count)") } }
+                } else if tideDebug {
+                    print("[Tides] heights request failed status=\(http2.statusCode)")
                 }
             }
             decoded = WorldTidesCombined(heights: heights, extremes: extremes, copyright: nil)
@@ -459,7 +492,9 @@ class TideService {
             if lows.isEmpty { lows = [] }
             return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
         }
-
+        if tideDebug {
+            print("[Tides] mapped heights=\(outHeights.count) daysWithExtremes=\(outExtremes.count)")
+        }
         return (outHeights, outExtremes, decoded.copyright)
     }
 

@@ -1406,6 +1406,15 @@ struct TideChartView: View {
                 Spacer()
             }
 
+            if weatherService.isLoadingTides {
+                HStack {
+                    ProgressView("Loading tides...")
+                        .progressViewStyle(CircularProgressViewStyle())
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            }
+
             GeometryReader { geo in
                 let rect = geo.size.rect.inset(by: .init(top: 10, left: 10, bottom: 26, right: 34))
                 let model = TideChartModel(

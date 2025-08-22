@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 import CoreLocation
 import SwiftUI
+import Security
 import os
 
 // MARK: - Weather Service
@@ -366,6 +367,42 @@ class TideService {
     }
     private static let state = TideState()
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "RockFisherman", category: "Tides")
+    private static let keychainService = "RockFisherman.Tides"
+    private static let keychainAccount = "WORLDTIDES_API_KEY"
+
+    private static func loadKeyFromKeychain() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+            kSecReturnData as String: true
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecSuccess, let data = item as? Data, let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return nil
+    }
+
+    @discardableResult
+    private static func saveKeyToKeychain(_ key: String) -> Bool {
+        let data = Data(key.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount
+        ]
+        let attrs: [String: Any] = [kSecValueData as String: data]
+        let updateStatus = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        if updateStatus == errSecItemNotFound {
+            var addQuery = query
+            addQuery[kSecValueData as String] = data
+            return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+        }
+        return false
+    }
 
     private static func cacheKey(latitude: Double, longitude: Double, day: String) -> String {
         let latStr = String(format: "%.3f", latitude) // ~100m precision
@@ -375,12 +412,21 @@ class TideService {
 
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
         let tideDebug = ProcessInfo.processInfo.environment["TIDE_DEBUG"] == "1"
-        // Load from environment first, then Info.plist. Trim whitespace.
+        // Load from Keychain, else env, else Info.plist. Trim whitespace.
+        let keychainKeyRaw = TideService.loadKeyFromKeychain()
         let envKeyRaw = ProcessInfo.processInfo.environment["WORLDTIDES_API_KEY"]
         let plistKeyRaw = Bundle.main.object(forInfoDictionaryKey: "WORLDTIDES_API_KEY") as? String
-        let combinedRaw = (envKeyRaw?.isEmpty == false ? envKeyRaw : plistKeyRaw) ?? ""
+        let chosenRaw: String? =
+            (keychainKeyRaw?.isEmpty == false ? keychainKeyRaw : nil) ??
+            (envKeyRaw?.isEmpty == false ? envKeyRaw : nil) ??
+            (plistKeyRaw?.isEmpty == false ? plistKeyRaw : nil)
+        let combinedRaw = chosenRaw ?? ""
         let trimmed = combinedRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = TideService.sanitizeKey(trimmed)
+        // If the key came from env or plist and Keychain was empty, persist it for future cold starts
+        if (keychainKeyRaw == nil || keychainKeyRaw?.isEmpty == true) && !apiKey.isEmpty {
+            _ = TideService.saveKeyToKeychain(apiKey)
+        }
         // Debug print of key (masked) + hash so the user can verify correctness
         if tideDebug {
             let keyHash: String = {

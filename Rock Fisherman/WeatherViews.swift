@@ -839,10 +839,28 @@ class FishingNewsViewModel: ObservableObject {
         let query = buildCappedQuery(baseTerms: baseTerms, tokens: cappedTokens, maxChars: 420)
 		// Encoded query not needed explicitly; URLComponents handles encoding
 
-        // NewsAPI.org configuration — load from environment first, then Info.plist
-        let envKey = ProcessInfo.processInfo.environment["YOUR_NEWSAPI_API_KEY"]
-        let plistKey = Bundle.main.object(forInfoDictionaryKey: "YOUR_NEWSAPI_API_KEY") as? String
-        let rawKey = (envKey?.isEmpty == false ? envKey : plistKey) ?? ""
+        // NewsAPI.org configuration — load from environment first, then Info.plist (support common key names)
+        func loadNewsApiKey() -> String {
+            let envCandidates = [
+                "YOUR_NEWSAPI_API_KEY",
+                "NEWS_API_KEY",
+                "NEWSAPI_KEY",
+                "NEWS_API_TOKEN"
+            ]
+            for k in envCandidates {
+                if let v = ProcessInfo.processInfo.environment[k], !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return v
+                }
+            }
+            let plistCandidates = envCandidates
+            for k in plistCandidates {
+                if let v = Bundle.main.object(forInfoDictionaryKey: k) as? String, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return v
+                }
+            }
+            return ""
+        }
+        let rawKey = loadNewsApiKey()
         let apiKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
 		// Debug logs removed
         guard !apiKey.isEmpty else {

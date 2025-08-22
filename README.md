@@ -71,10 +71,13 @@ Rock Fisherman/
 
 ## 🆕 What’s New in v1.2
 
-- **Tides reliability**: Fetches daily extremes in small chunks (e.g., 3d + remaining) and aggregates to 7 days to reduce provider timeouts, while keeping hourly heights in a single request.
+- **Tides reliability**: Fetches daily extremes in small chunks (e.g., 3d + remaining) and aggregates to 7 days to reduce provider timeouts; hourly heights are fetched for 3 days in a single call.
 - **Loading state**: Tide chart shows a dedicated spinner while tide data loads.
 - **Optional debugging**: Enable `TIDE_DEBUG=1` (Scheme env var) to log tide requests and timings without exposing the API key.
 - **Docs**: README updated to reflect chunked tide fetching and 7‑day coverage.
+- **Performance**: Hourly tide heights limited to 3 days for faster, more reliable loads while daily extremes still cover 7 days.
+- **Resilience**: Tide requests use timeouts (12s/15s) and up to 3 retries with exponential backoff.
+- **Caching**: 10‑minute in‑memory cache keyed by rounded lat/lon/day serves data instantly after the app resumes; background fetch refreshes it.
 
 ## 🆕 What’s New in v1
 
@@ -172,9 +175,9 @@ The app will automatically render this image and place the location title about 
 - Notes:
 - We request tide data in a robust way to handle slow provider responses:
   - Extremes are fetched in small chunks (e.g., 3 days + remaining) and aggregated to 7 days
-  - Hourly heights are fetched in a single call
-  - This reduces long timeouts while preserving full 7‑day coverage
-  - Example full request: `heights&extremes&date=today&days=7&lat=<lat>&lon=<lon>&key=<key>`
+  - Hourly heights are fetched for 3 days to keep responses fast and reliable
+  - Requests use timeouts (12s/15s) and up to 3 retries with exponential backoff
+  - A 10‑minute in‑memory cache (keyed by rounded lat/lon and day) serves data immediately after app resume while the network refresh updates it in the background
   - Times are rendered in local time; extremes populate daily High/Low values and times
 - WorldTides requires copyright reproduction; see their docs at `https://www.worldtides.info/apidocs`.
 

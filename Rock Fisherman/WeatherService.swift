@@ -330,6 +330,17 @@ enum TideServiceError: Error {
 class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
+    // Simple in-memory caches with short TTL to improve perceived reliability after app resumes
+    private static var cacheHeights: [String: (ts: Date, data: [TideHeight])] = [:]
+    private static var cacheExtremes: [String: (ts: Date, data: [DailyTide])] = [:]
+    private static let cacheTTL: TimeInterval = 10 * 60 // 10 minutes
+
+    private static func cacheKey(latitude: Double, longitude: Double, day: String) -> String {
+        let latStr = String(format: "%.3f", latitude) // ~100m precision
+        let lonStr = String(format: "%.3f", longitude)
+        return "lat=\(latStr)|lon=\(lonStr)|day=\(day)"
+    }
+
     func fetchTides(latitude: Double, longitude: Double) async throws -> ([TideHeight], [DailyTide], String?) {
         let tideDebug = ProcessInfo.processInfo.environment["TIDE_DEBUG"] == "1"
         // Load from environment first, then Info.plist. Trim whitespace.
@@ -349,10 +360,19 @@ class TideService {
         }
         guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
 
-        // Fetch hourly heights and extremes for 3 days starting today (UTC is fine; API returns ISO strings with offset)
+        // Fetch hourly heights and extremes starting today (UTC is fine; API returns ISO strings with offset)
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let today = dateFormatter.string(from: Date())
+        let key = TideService.cacheKey(latitude: latitude, longitude: longitude, day: today)
+
+        // Serve fresh cache if not expired (both heights and extremes)
+        if let h = TideService.cacheHeights[key], let e = TideService.cacheExtremes[key] {
+            if Date().timeIntervalSince(h.ts) < TideService.cacheTTL && Date().timeIntervalSince(e.ts) < TideService.cacheTTL {
+                if tideDebug { print("[Tides] cache hit heights=\(h.data.count) extremesDays=\(e.data.count)") }
+                return (h.data, e.data, nil)
+            }
+        }
 
         // First try combined heights+extremes
         func buildURL(includeHeights: Bool, includeExtremes: Bool, days: Int) -> URL? {
@@ -396,18 +416,40 @@ class TideService {
         }
 
         func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
-            let start = Date()
-            if tideDebug {
-                let masked = url.absoluteString.replacingOccurrences(of: apiKey, with: "***")
-                print("[Tides] GET \(masked)")
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 12
+            config.timeoutIntervalForResource = 15
+            config.requestCachePolicy = .reloadIgnoringLocalCacheData
+            let session = URLSession(configuration: config)
+
+            var attempt = 0
+            var lastError: Error?
+            while attempt < 3 {
+                let start = Date()
+                if tideDebug {
+                    let masked = url.absoluteString.replacingOccurrences(of: apiKey, with: "***")
+                    print("[Tides] GET (try=\(attempt+1)) \(masked)")
+                }
+                do {
+                    let (d, r) = try await session.data(from: url)
+                    let durMs = Int(Date().timeIntervalSince(start) * 1000)
+                    guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
+                    if tideDebug {
+                        print("[Tides] <- status=\(http.statusCode) bytes=\(d.count) dur=\(durMs)ms")
+                    }
+                    return (d, http)
+                } catch {
+                    lastError = error
+                    attempt += 1
+                    if attempt < 3 {
+                        let backoff = pow(2.0, Double(attempt - 1)) * 0.75 // 0.75s, 1.5s
+                        if tideDebug { print("[Tides] retry in \(String(format: "%.2f", backoff))s after error: \(error.localizedDescription)") }
+                        try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                        continue
+                    }
+                }
             }
-            let (d, r) = try await URLSession.shared.data(from: url)
-            let durMs = Int(Date().timeIntervalSince(start) * 1000)
-            guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
-            if tideDebug {
-                print("[Tides] <- status=\(http.statusCode) bytes=\(d.count) dur=\(durMs)ms")
-            }
-            return (d, http)
+            throw lastError ?? TideServiceError.http(-1)
         }
 
         var decoded: WorldTidesCombined? = nil
@@ -448,12 +490,15 @@ class TideService {
                         } else if tideDebug {
                             print("[Tides] extremes chunk failed status=\(httpChunk.statusCode) start=\(startStr) days=\(span)")
                         }
+                        // Small pacing delay between chunk requests to reduce server load
+                        try? await Task.sleep(nanoseconds: 180_000_000) // 180ms
                     }
                 }
                 offsetDays += span
             }
 
-            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 7) {
+            // Keep hourly heights lightweight: 3 days is enough for charts/merging
+            if let u2 = buildURL(includeHeights: true, includeExtremes: false, days: 3) {
                 let (d2, http2) = try await request(u2)
                 if http2.statusCode == 200 {
                     if let tmp2 = try? JSONDecoder().decode(WorldTidesCombined.self, from: d2) { heights = tmp2.heights; if tideDebug { print("[Tides] heights decoded=\(heights.count)") } }
@@ -492,9 +537,11 @@ class TideService {
             if lows.isEmpty { lows = [] }
             return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
         }
-        if tideDebug {
-            print("[Tides] mapped heights=\(outHeights.count) daysWithExtremes=\(outExtremes.count)")
-        }
+        if tideDebug { print("[Tides] mapped heights=\(outHeights.count) daysWithExtremes=\(outExtremes.count)") }
+
+        // Update caches
+        TideService.cacheHeights[key] = (ts: Date(), data: outHeights)
+        TideService.cacheExtremes[key] = (ts: Date(), data: outExtremes)
         return (outHeights, outExtremes, decoded.copyright)
     }
 

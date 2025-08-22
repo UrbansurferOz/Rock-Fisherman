@@ -372,7 +372,7 @@ class TideService {
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let today = dateFormatter.string(from: Date())
         let key = TideService.cacheKey(latitude: latitude, longitude: longitude, day: today)
-        TideService.logger.info("fetch start lat=\(latitude, format: .fixed(3)) lon=\(longitude, format: .fixed(3)) day=\(today, privacy: .public)")
+        TideService.logger.info("fetch start lat=\(latitude, format: .fixed(precision: 3)) lon=\(longitude, format: .fixed(precision: 3)) day=\(today, privacy: .public)")
 
         // Serve fresh cache if not expired (both heights and extremes)
         if let h = TideService.cacheHeights[key], let e = TideService.cacheExtremes[key] {

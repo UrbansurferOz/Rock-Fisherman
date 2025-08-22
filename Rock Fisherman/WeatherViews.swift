@@ -1,4 +1,5 @@
 import SwiftUI
+import Security
 import Combine
 import CoreLocation
 import UIKit
@@ -839,8 +840,39 @@ class FishingNewsViewModel: ObservableObject {
         let query = buildCappedQuery(baseTerms: baseTerms, tokens: cappedTokens, maxChars: 420)
 		// Encoded query not needed explicitly; URLComponents handles encoding
 
-        // NewsAPI.org configuration — load from environment first, then Info.plist (support common key names)
+        // NewsAPI.org configuration — load from Keychain, then env/Info.plist; persist to Keychain on first run
         func loadNewsApiKey() -> String {
+            func loadFromKeychain() -> String? {
+                let query: [String: Any] = [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: "RockFisherman.News",
+                    kSecAttrAccount as String: "NEWS_API_KEY",
+                    kSecReturnData as String: true
+                ]
+                var item: CFTypeRef?
+                let status = SecItemCopyMatching(query as CFDictionary, &item)
+                if status == errSecSuccess, let data = item as? Data, let str = String(data: data, encoding: .utf8) {
+                    return str
+                }
+                return nil
+            }
+            func saveToKeychain(_ key: String) {
+                let data = Data(key.utf8)
+                let baseQuery: [String: Any] = [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: "RockFisherman.News",
+                    kSecAttrAccount as String: "NEWS_API_KEY"
+                ]
+                let attrs: [String: Any] = [kSecValueData as String: data]
+                let status = SecItemUpdate(baseQuery as CFDictionary, attrs as CFDictionary)
+                if status == errSecItemNotFound {
+                    var addQuery = baseQuery
+                    addQuery[kSecValueData as String] = data
+                    _ = SecItemAdd(addQuery as CFDictionary, nil)
+                }
+            }
+
+            if let k = loadFromKeychain(), !k.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return k }
             let envCandidates = [
                 "YOUR_NEWSAPI_API_KEY",
                 "NEWS_API_KEY",
@@ -849,12 +881,14 @@ class FishingNewsViewModel: ObservableObject {
             ]
             for k in envCandidates {
                 if let v = ProcessInfo.processInfo.environment[k], !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    saveToKeychain(v)
                     return v
                 }
             }
             let plistCandidates = envCandidates
             for k in plistCandidates {
                 if let v = Bundle.main.object(forInfoDictionaryKey: k) as? String, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    saveToKeychain(v)
                     return v
                 }
             }

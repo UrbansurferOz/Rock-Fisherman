@@ -158,6 +158,7 @@ Notes for NewsAPI:
 - Results are limited to the last 30 days and sorted by publish date.
 - Geographic radius filters aren’t available in NewsAPI; the app biases local results by including your selected place name tokens in the query and filters client‑side for relevance.
 - Responses are cached per‑location for 1 hour to reduce API usage and improve performance.
+ - On first successful run, the News API key is saved securely to the Keychain and will be reused on cold starts/crashes.
 
 Note: The previous Azure/Bing-powered news section has been removed while we evaluate alternative providers.
 

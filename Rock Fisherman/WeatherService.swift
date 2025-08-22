@@ -365,7 +365,6 @@ class TideService {
         }
     }
     private static let state = TideState()
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "RockFisherman", category: "Tides")
     private static let keychainService = "RockFisherman.Tides"
     private static let keychainAccount = "WORLDTIDES_API_KEY"
 

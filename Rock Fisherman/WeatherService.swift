@@ -332,11 +332,39 @@ class TideService {
     // WorldTides API integration
     // Requires Info.plist key: WORLDTIDES_API_KEY
     // Simple in-memory caches with short TTL to improve perceived reliability after app resumes
-    private static var cacheHeights: [String: (ts: Date, data: [TideHeight])] = [:]
-    private static var cacheExtremes: [String: (ts: Date, data: [DailyTide])] = [:]
     private static let cacheTTL: TimeInterval = 10 * 60 // 10 minutes
-    // Coalesce identical in-flight requests per lat/lon/day key
-    private static var inflightTasks: [String: Task<([TideHeight], [DailyTide], String?), Error>] = [:]
+    private actor TideState {
+        var cacheHeights: [String: (ts: Date, data: [TideHeight])] = [:]
+        var cacheExtremes: [String: (ts: Date, data: [DailyTide])] = [:]
+        var inflightTasks: [String: Task<([TideHeight], [DailyTide], String?), Error>] = [:]
+
+        func getFreshCache(for key: String, ttl: TimeInterval) -> ([TideHeight], [DailyTide])? {
+            if let h = cacheHeights[key], let e = cacheExtremes[key] {
+                if Date().timeIntervalSince(h.ts) < ttl && Date().timeIntervalSince(e.ts) < ttl {
+                    return (h.data, e.data)
+                }
+            }
+            return nil
+        }
+
+        func setCaches(for key: String, heights: [TideHeight], extremes: [DailyTide]) {
+            cacheHeights[key] = (ts: Date(), data: heights)
+            cacheExtremes[key] = (ts: Date(), data: extremes)
+        }
+
+        func getInflight(for key: String) -> Task<([TideHeight], [DailyTide], String?), Error>? {
+            return inflightTasks[key]
+        }
+
+        func setInflight(for key: String, task: Task<([TideHeight], [DailyTide], String?), Error>) {
+            inflightTasks[key] = task
+        }
+
+        func clearInflight(for key: String) {
+            inflightTasks[key] = nil
+        }
+    }
+    private static let state = TideState()
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "RockFisherman", category: "Tides")
 
     private static func cacheKey(latitude: Double, longitude: Double, day: String) -> String {
@@ -376,16 +404,14 @@ class TideService {
         NSLog("[Tides] fetch start lat=%.3f lon=%.3f day=%@", latitude, longitude, today)
 
         // Serve fresh cache if not expired (both heights and extremes)
-        if let h = TideService.cacheHeights[key], let e = TideService.cacheExtremes[key] {
-            if Date().timeIntervalSince(h.ts) < TideService.cacheTTL && Date().timeIntervalSince(e.ts) < TideService.cacheTTL {
-                if tideDebug { print("[Tides] cache hit heights=\(h.data.count) extremesDays=\(e.data.count)") }
-                TideService.logger.info("cache hit heights=\(h.data.count) extremesDays=\(e.data.count)")
-                NSLog("[Tides] cache hit heights=%ld extremesDays=%ld", h.data.count, e.data.count)
-                return (h.data, e.data, nil)
-            }
+        if let cached = await TideService.state.getFreshCache(for: key, ttl: TideService.cacheTTL) {
+            if tideDebug { print("[Tides] cache hit heights=\(cached.0.count) extremesDays=\(cached.1.count)") }
+            TideService.logger.info("cache hit heights=\(cached.0.count) extremesDays=\(cached.1.count)")
+            NSLog("[Tides] cache hit heights=%ld extremesDays=%ld", cached.0.count, cached.1.count)
+            return (cached.0, cached.1, nil)
         }
         // Coalesce identical in-flight requests by key
-        if let existing = TideService.inflightTasks[key] {
+        if let existing = await TideService.state.getInflight(for: key) {
             if tideDebug { print("[Tides] coalesced with in-flight fetch for key=\(key)") }
             TideService.logger.info("coalesced with in-flight fetch for key=\(key, privacy: .public)")
             NSLog("[Tides] coalesced with in-flight fetch for key=%@", key)
@@ -395,8 +421,8 @@ class TideService {
         let task = Task { () -> ([TideHeight], [DailyTide], String?) in
             return try await self.fetchTidesNetwork(latitude: latitude, longitude: longitude, today: today, apiKey: apiKey, tideDebug: tideDebug, cacheKey: key)
         }
-        TideService.inflightTasks[key] = task
-        defer { TideService.inflightTasks[key] = nil }
+        await TideService.state.setInflight(for: key, task: task)
+        defer { Task { await TideService.state.clearInflight(for: key) } }
         return try await task.value
     }
 
@@ -573,8 +599,7 @@ class TideService {
         TideService.logger.info("mapped heights=\(outHeights.count) daysWithExtremes=\(outExtremes.count)")
         NSLog("[Tides] mapped heights=%ld daysWithExtremes=%ld", outHeights.count, outExtremes.count)
 
-        TideService.cacheHeights[cacheKey] = (ts: Date(), data: outHeights)
-        TideService.cacheExtremes[cacheKey] = (ts: Date(), data: outExtremes)
+        await TideService.state.setCaches(for: cacheKey, heights: outHeights, extremes: outExtremes)
         TideService.logger.info("fetch complete heights=\(outHeights.count) days=\(outExtremes.count)")
         NSLog("[Tides] fetch complete heights=%ld days=%ld", outHeights.count, outExtremes.count)
         return (outHeights, outExtremes, decoded.copyright)

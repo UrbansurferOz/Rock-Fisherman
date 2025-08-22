@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 import CoreLocation
 import SwiftUI
+import os
 
 // MARK: - Weather Service
 class WeatherService: ObservableObject {
@@ -336,6 +337,7 @@ class TideService {
     private static let cacheTTL: TimeInterval = 10 * 60 // 10 minutes
     // Coalesce identical in-flight requests per lat/lon/day key
     private static var inflightTasks: [String: Task<([TideHeight], [DailyTide], String?), Error>] = [:]
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "RockFisherman", category: "Tides")
 
     private static func cacheKey(latitude: Double, longitude: Double, day: String) -> String {
         let latStr = String(format: "%.3f", latitude) // ~100m precision
@@ -360,24 +362,30 @@ class TideService {
             }()
             print("[Tides] API key present: \(!apiKey.isEmpty), sha256=\(keyHash)")
         }
-        guard !apiKey.isEmpty else { throw TideServiceError.notAvailable }
+        guard !apiKey.isEmpty else {
+            TideService.logger.error("API key not available")
+            throw TideServiceError.notAvailable
+        }
 
         // Fetch hourly heights and extremes starting today (UTC is fine; API returns ISO strings with offset)
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let today = dateFormatter.string(from: Date())
         let key = TideService.cacheKey(latitude: latitude, longitude: longitude, day: today)
+        TideService.logger.info("fetch start lat=\(latitude, format: .fixed(3)) lon=\(longitude, format: .fixed(3)) day=\(today, privacy: .public)")
 
         // Serve fresh cache if not expired (both heights and extremes)
         if let h = TideService.cacheHeights[key], let e = TideService.cacheExtremes[key] {
             if Date().timeIntervalSince(h.ts) < TideService.cacheTTL && Date().timeIntervalSince(e.ts) < TideService.cacheTTL {
                 if tideDebug { print("[Tides] cache hit heights=\(h.data.count) extremesDays=\(e.data.count)") }
+                TideService.logger.info("cache hit heights=\(h.data.count) extremesDays=\(e.data.count)")
                 return (h.data, e.data, nil)
             }
         }
         // Coalesce identical in-flight requests by key
         if let existing = TideService.inflightTasks[key] {
             if tideDebug { print("[Tides] coalesced with in-flight fetch for key=\(key)") }
+            TideService.logger.info("coalesced with in-flight fetch for key=\(key, privacy: .public)")
             return try await existing.value
         }
 
@@ -445,6 +453,7 @@ class TideService {
                     let masked = url.absoluteString.replacingOccurrences(of: apiKey, with: "***")
                     print("[Tides] GET (try=\(attempt+1)) \(masked)")
                 }
+                TideService.logger.debug("GET try=\(attempt+1) url=\(url.absoluteString, privacy: .public)")
                 do {
                     let (d, r) = try await session.data(from: url)
                     let durMs = Int(Date().timeIntervalSince(start) * 1000)
@@ -452,6 +461,7 @@ class TideService {
                     if tideDebug {
                         print("[Tides] <- status=\(http.statusCode) bytes=\(d.count) dur=\(durMs)ms")
                     }
+                    TideService.logger.info("<- status=\(http.statusCode) bytes=\(d.count) durMs=\(durMs)")
                     return (d, http)
                 } catch {
                     lastError = error
@@ -459,11 +469,13 @@ class TideService {
                     if attempt < 3 {
                         let backoff = pow(2.0, Double(attempt - 1)) * 0.75
                         if tideDebug { print("[Tides] retry in \(String(format: "%.2f", backoff))s after error: \(error.localizedDescription)") }
+                        TideService.logger.warning("retry #\(attempt) after error: \(String(describing: error), privacy: .public)")
                         try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
                         continue
                     }
                 }
             }
+            TideService.logger.error("request failed after retries error=\(String(describing: lastError), privacy: .public)")
             throw lastError ?? TideServiceError.http(-1)
         }
 
@@ -521,7 +533,10 @@ class TideService {
             decoded = WorldTidesCombined(heights: heights, extremes: extremes, copyright: nil)
         }
 
-        guard let decoded = decoded else { throw TideServiceError.notAvailable }
+        guard let decoded = decoded else {
+            TideService.logger.error("decode failed: no data decoded")
+            throw TideServiceError.notAvailable
+        }
 
         let outHeights: [TideHeight] = decoded.heights.map { h in
             TideHeight(time: Self.normalizeISOMinute(h.date), height: h.height)
@@ -547,9 +562,11 @@ class TideService {
             return DailyTide(date: day, highs: Array(highs.prefix(2)), lows: Array(lows.prefix(2)))
         }
         if tideDebug { print("[Tides] mapped heights=\(outHeights.count) daysWithExtremes=\(outExtremes.count)") }
+        TideService.logger.info("mapped heights=\(outHeights.count) daysWithExtremes=\(outExtremes.count)")
 
         TideService.cacheHeights[cacheKey] = (ts: Date(), data: outHeights)
         TideService.cacheExtremes[cacheKey] = (ts: Date(), data: outExtremes)
+        TideService.logger.info("fetch complete heights=\(outHeights.count) days=\(outExtremes.count)")
         return (outHeights, outExtremes, decoded.copyright)
     }
 

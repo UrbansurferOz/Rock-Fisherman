@@ -508,7 +508,7 @@ class TideService {
                 
                 do {
                     let (d, r) = try await session.data(from: url)
-                    let durMs = Int(Date().timeIntervalSince(start) * 1000)
+                    _ = Int(Date().timeIntervalSince(start) * 1000)
                     guard let http = r as? HTTPURLResponse else { throw TideServiceError.http(-1) }
                     
                     return (d, http)

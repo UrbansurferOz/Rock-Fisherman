@@ -73,8 +73,9 @@ Rock Fisherman/
 
 - **Tides reliability**: Fetches daily extremes in small chunks (e.g., 3d + remaining) and aggregates to 7 days to reduce provider timeouts; hourly heights are fetched for 3 days in a single call.
 - **Loading state**: Tide chart shows a dedicated spinner while tide data loads.
-- **Optional debugging**: Enable `TIDE_DEBUG=1` (Scheme env var) to log tide requests and timings without exposing the API key.
-- **Docs**: README updated to reflect chunked tide fetching and 7‑day coverage.
+- **Coalescing**: Identical tide requests for the same lat/lon/day are coalesced so concurrent callers await one network call.
+- **Key persistence**: WorldTides API key is persisted to Keychain on first run and read on cold starts.
+- **Docs**: README updated to reflect chunked tide fetching, coalescing, and 7‑day coverage.
 - **Performance**: Hourly tide heights limited to 3 days for faster, more reliable loads while daily extremes still cover 7 days.
 - **Resilience**: Tide requests use timeouts (12s/15s) and up to 3 retries with exponential backoff.
 - **Caching**: 10‑minute in‑memory cache keyed by rounded lat/lon/day serves data instantly after the app resumes; background fetch refreshes it.
@@ -135,6 +136,7 @@ Add your WorldTides key:
 1. In Xcode, open your target `Info` tab (or edit `Info.plist`).
 2. Add a String key named `WORLDTIDES_API_KEY` with your API key value.
 3. Build and run. The app will fetch hourly tide heights and daily extremes for the next 7 days.
+4. On first successful run, the key is securely persisted in the Keychain so it remains available after crashes or cold starts.
 
 News & Catch Reports (NewsAPI.org)
 - Base URL: `https://newsapi.org/v2/everything`

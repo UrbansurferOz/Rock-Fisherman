@@ -15,6 +15,10 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
     // Track and cancel in-flight searches to avoid stale results flashing in
     private var currentSearchGeneration: Int = 0
     private var activeMKSearches: [MKLocalSearch] = []
+    // Coalesce and rate-limit outbound MKLocalSearch requests to avoid GEOErrorDomain -3 throttling
+    private var pendingSearchWorkItem: DispatchWorkItem?
+    private var nextAllowedSearchTime: Date = .distantPast
+    private let minIntervalBetweenSearches: TimeInterval = 1.2 // Keep <= 50/min
     // Preferred country derived from device settings to bias and scope results
     private let preferredRegionCode: String = {
         if #available(iOS 16.0, *) {
@@ -75,8 +79,8 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
                 }
                 self.lastQuery = searchQuery
                 self.completer.queryFragment = searchQuery
-                // Also run our search fallback path
-                self.performSearch(query: searchQuery, near: coordinate, generation: generation)
+                // Do not also kick off a direct MKLocalSearch here; we will trigger a single
+                // coalesced search from completerDidUpdateResults to avoid fan-out and throttling
             }
     }
     
@@ -239,67 +243,76 @@ class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterD
         // Avoid acting on stale results
         guard !currentFragment.isEmpty, currentFragment == lastQuery else { return }
 
-        // Prefer AU completions by filtering if possible
-        let rawCompletions = Array(completer.results.prefix(12))
-        let auCompletions = rawCompletions.filter { comp in
-            let lc = comp.subtitle.lowercased()
-            return lc.contains("australia") || lc.contains("nsw") || lc.contains("new south wales") || lc.contains("qld") || lc.contains("vic") || lc.contains("wa") || lc.contains("sa") || lc.contains("tas") || lc.contains("act") || lc.contains("nt")
-        }
-        let completions = auCompletions.isEmpty ? Array(rawCompletions.prefix(6)) : Array(auCompletions.prefix(6))
-        if completions.isEmpty { return }
+        // Cancel any pending scheduled search; we'll schedule a fresh coalesced one
+        pendingSearchWorkItem?.cancel()
 
-        // Debug logs removed
-
-        let group = DispatchGroup()
-        var placemarks: [CLPlacemark] = []
-        for c in completions {
-            group.enter()
-            let req = MKLocalSearch.Request(completion: c)
-            let search = MKLocalSearch(request: req)
-            register(search: search)
-            search.start { [weak self] resp, _ in
-                defer { self?.unregister(search: search) }
-                if let items = resp?.mapItems {
-                    placemarks.append(contentsOf: items.compactMap { $0.placemark })
-                }
-                group.leave()
-            }
-        }
-
-        group.notify(queue: .main) {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            // Guard again for staleness at fire time
             guard generation == self.currentSearchGeneration, currentFragment == self.lastQuery else { return }
-            let results = self.filterAndRankResults(placemarks, for: currentFragment)
-            // If no AU results from completer-derived searches, run an AU-scoped direct search
-            let hasAU = results.contains { $0.country.caseInsensitiveCompare(self.primaryCountryName) == .orderedSame }
-            if !hasAU {
-                let req = MKLocalSearch.Request()
-                req.naturalLanguageQuery = currentFragment
-                req.resultTypes = [.address]
-                req.region = self.australiaRegion
-                let direct = MKLocalSearch(request: req)
-                self.register(search: direct)
-                direct.start { [weak self] resp, _ in
-                    guard let self else { return }
-                    defer { self.unregister(search: direct) }
-                    guard generation == self.currentSearchGeneration, currentFragment == self.lastQuery else { return }
-                    var merged = placemarks
-                    if let items = resp?.mapItems {
-                        merged.append(contentsOf: items.compactMap { $0.placemark })
-                    }
-                    let finalResults = self.filterAndRankResults(merged, for: currentFragment)
-                    if !finalResults.isEmpty {
+
+            // Single MKLocalSearch for the fragment with regional bias
+            let req = MKLocalSearch.Request()
+            req.naturalLanguageQuery = currentFragment
+            req.resultTypes = [.address]
+            req.region = self.completer.region
+
+            let search = MKLocalSearch(request: req)
+            self.register(search: search)
+            search.start { [weak self] resp, err in
+                guard let self else { return }
+                defer { self.unregister(search: search) }
+                let now = Date()
+                self.nextAllowedSearchTime = now.addingTimeInterval(self.minIntervalBetweenSearches)
+
+                // Backoff if throttled
+                if let nsErr = err as NSError?, nsErr.domain == "GEOErrorDomain", nsErr.code == -3 {
+                    // Throttled; pause further searches for ~30s
+                    self.nextAllowedSearchTime = now.addingTimeInterval(30)
+                    DispatchQueue.main.async {
                         self.isSearching = false
-                        self.searchResults = finalResults
-                    // Debug logs removed
+                        self.searchError = "Search temporarily throttled. Please wait a few seconds and try again."
                     }
+                    return
                 }
-            } else {
-                if !results.isEmpty {
-                    self.isSearching = false
-                    self.searchResults = results
-                    // Debug logs removed
+
+                if let items = resp?.mapItems, !items.isEmpty {
+                    var placemarks = items.compactMap { $0.placemark }
+                    // If no AU results, try a single AU-scoped pass
+                    let hasAU = placemarks.contains { $0.isoCountryCode?.uppercased() == self.primaryCountryCode }
+                    if !hasAU {
+                        let auReq = MKLocalSearch.Request()
+                        auReq.naturalLanguageQuery = currentFragment
+                        auReq.resultTypes = [.address]
+                        auReq.region = self.australiaRegion
+                        let auSearch = MKLocalSearch(request: auReq)
+                        self.register(search: auSearch)
+                        auSearch.start { [weak self] auResp, _ in
+                            guard let self else { return }
+                            defer { self.unregister(search: auSearch) }
+                            if let auItems = auResp?.mapItems, !auItems.isEmpty {
+                                placemarks.append(contentsOf: auItems.compactMap { $0.placemark })
+                            }
+                            self.handlePlacemarkResults(from: "MKLocalSearch", query: currentFragment, placemarks: placemarks)
+                        }
+                    } else {
+                        self.handlePlacemarkResults(from: "MKLocalSearch", query: currentFragment, placemarks: placemarks)
+                    }
+                } else {
+                    // Fallback to CLGeocoder with scoped queries
+                    self.performCLGeocoderSearch(rawQuery: currentFragment)
                 }
             }
+        }
+
+        pendingSearchWorkItem = work
+
+        // Determine when we are allowed to fire next, honoring min interval and any backoff
+        let delay = max(0, nextAllowedSearchTime.timeIntervalSinceNow)
+        if delay == 0 {
+            DispatchQueue.main.async(execute: work)
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         }
     }
 

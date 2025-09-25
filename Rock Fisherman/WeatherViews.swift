@@ -669,16 +669,8 @@ private struct DailyRowView: View {
                 }
                 // Render all tide extremes for the day in chronological order
                 if let highs = forecast.tideHighs, let lows = forecast.tideLows, (!highs.isEmpty || !lows.isEmpty) {
-                    let fmtIn = DateFormatter(); fmtIn.dateFormat = "yyyy-MM-dd'T'HH:mm"
-                    let fmtOut = DateFormatter(); fmtOut.dateFormat = "HH:mm"
-                    let items: [(String, Bool, Double)] = {
-                        var tmp: [(Date, Bool, Double)] = []
-                        for h in highs { if let d = fmtIn.date(from: String(h.time.prefix(16))) { tmp.append((d, true, h.height)) } }
-                        for l in lows  { if let d = fmtIn.date(from: String(l.time.prefix(16))) { tmp.append((d, false, l.height)) } }
-                        return tmp.sorted { $0.0 < $1.0 }.map { (fmtOut.string(from: $0.0), $0.1, $0.2) }
-                    }()
                     VStack(alignment: .trailing, spacing: 2) {
-                        ForEach(Array(items.enumerated()), id: \.0) { _, it in
+                        ForEach(Array(tideItems(for: forecast).enumerated()), id: \.0) { _, it in
                             HStack(spacing: 6) {
                                 Image(systemName: it.1 ? "arrow.up" : "arrow.down")
                                     .font(.caption2)
@@ -731,6 +723,34 @@ private struct DailyRowView: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
+    }
+}
+
+private extension DailyRowView {
+    static let dfIn: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        return f
+    }()
+    static let dfOut: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+    func tideItems(for forecast: DailyForecast) -> [(String, Bool, Double)] {
+        guard let highs = forecast.tideHighs, let lows = forecast.tideLows else { return [] }
+        var tmp: [(Date, Bool, Double)] = []
+        for h in highs {
+            if let d = DailyRowView.dfIn.date(from: String(h.time.prefix(16))) {
+                tmp.append((d, true, h.height))
+            }
+        }
+        for l in lows {
+            if let d = DailyRowView.dfIn.date(from: String(l.time.prefix(16))) {
+                tmp.append((d, false, l.height))
+            }
+        }
+        return tmp.sorted { $0.0 < $1.0 }.map { (DailyRowView.dfOut.string(from: $0.0), $0.1, $0.2) }
     }
 }
 

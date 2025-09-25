@@ -58,12 +58,16 @@ struct Rockfisherman_WidgetEntryView : View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(entry.nextHighTide)
-                        .font(.headline)
+                        .font(.subheadline)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                     if let h = entry.height {
-                        Text(String(format: "%.2fm", h))
-                            .font(.caption)
+                        Text(String(format: "%.1fm", h))
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                     }
                 }
             }
@@ -192,18 +196,23 @@ private struct TideMiniExtremesRow: View {
         let isHigh = (d?.array(forKey: "tide24hExtremeIsHigh") as? [Int]) ?? []
         let heights = (d?.array(forKey: "tide24hExtremeHeights") as? [Double]) ?? []
         let n = min(times.count, min(isHigh.count, heights.count))
-        return HStack(spacing: 8) {
+        return HStack(spacing: 6) {
             ForEach(0..<n, id: \.self) { i in
                 let up = (isHigh[i] == 1)
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Image(systemName: up ? "arrow.up" : "arrow.down")
                         .font(.caption2)
                         .foregroundStyle(.teal)
                     Text(dfOut.string(from: dfIn.date(from: String(times[i].prefix(16))) ?? Date()))
-                        .font(.caption2)
-                    Text(String(format: "%.2fm", heights[i]))
-                        .font(.caption2)
+                        .font(.system(size: 9))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(String(format: "%.1fm", heights[i]))
+                        .font(.system(size: 9))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                 }
             }
             Spacer(minLength: 0)

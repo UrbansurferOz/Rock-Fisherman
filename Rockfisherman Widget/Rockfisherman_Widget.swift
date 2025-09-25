@@ -101,7 +101,14 @@ private struct TideMiniChart: View {
     var body: some View {
         GeometryReader { geo in
             let rect = geo.frame(in: .local)
-            let (pts, ymin, ymax) = readSeries()
+            let (dates, heights) = readRaw()
+            let haveSeries = dates.count >= 2 && heights.count == dates.count
+            let start = haveSeries ? dates.first! : Date()
+            let end = haveSeries ? dates.last! : Date().addingTimeInterval(24*3600)
+            let ymin = heights.min() ?? 0
+            let ymax = heights.max() ?? (ymin + 1)
+            let span = max(end.timeIntervalSince(start), 1)
+            let pts: [(t: Double, h: Double)] = haveSeries ? zip(dates, heights).map { (d, h) in (t: d.timeIntervalSince(start) / span, h: h) } : []
             ZStack {
                 Path { p in
                     let grid = 3
@@ -120,6 +127,26 @@ private struct TideMiniChart: View {
                         }
                     }
                     path.stroke(.teal, lineWidth: 2)
+
+                    // Current point dot + label (closest sample to now)
+                    let now = Date()
+                    if let idx = dates.enumerated().min(by: { abs($0.element.timeIntervalSince(now)) < abs($1.element.timeIntervalSince(now)) })?.offset,
+                       idx < heights.count {
+                        let dNow = dates[idx]
+                        let hNow = heights[idx]
+                        let tNow = dNow.timeIntervalSince(start) / span
+                        let xNow = rect.minX + CGFloat(tNow) * rect.width
+                        let yNow = mapY(hNow, rect: rect, ymin: ymin, ymax: ymax)
+                        Circle()
+                            .fill(Color.teal)
+                            .frame(width: 6, height: 6)
+                            .position(x: xNow, y: yNow)
+                        Text(String(format: "%.1fm", hNow))
+                            .font(.caption2)
+                            .bold()
+                            .foregroundStyle(.teal)
+                            .position(x: min(rect.maxX - 10, xNow + 22), y: max(rect.minY + 8, yNow - 10))
+                    }
                 }
             }
         }
@@ -145,6 +172,14 @@ private struct TideMiniChart: View {
         let ymin = heights.min() ?? 0
         let ymax = heights.max() ?? 1
         return (pts, ymin, ymax)
+    }
+
+    private func readRaw() -> ([Date], [Double]) {
+        let d = UserDefaults(suiteName: "group.UrbansuferOz.RockFisherman")
+        let times = (d?.array(forKey: "tide24hTimes") as? [String]) ?? []
+        let heights = (d?.array(forKey: "tide24hHeights") as? [Double]) ?? []
+        let dates: [Date] = times.compactMap { dfIn.date(from: String($0.prefix(16))) }
+        return (dates.count == heights.count ? dates : [], dates.count == heights.count ? heights : [])
     }
 }
 

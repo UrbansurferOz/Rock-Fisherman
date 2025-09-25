@@ -10,47 +10,58 @@ import SwiftUI
 
 struct Provider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), configuration: ConfigurationAppIntent())
+        SimpleEntry(date: Date(), configuration: ConfigurationAppIntent(), nextHighTide: "--:--", height: nil)
     }
 
     func snapshot(for configuration: ConfigurationAppIntent, in context: Context) async -> SimpleEntry {
-        SimpleEntry(date: Date(), configuration: configuration)
+        let (timeStr, height) = nextHighTideFromAppGroup()
+        return SimpleEntry(date: Date(), configuration: configuration, nextHighTide: timeStr, height: height)
     }
     
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<SimpleEntry> {
-        var entries: [SimpleEntry] = []
-
-        // Generate a timeline consisting of five entries an hour apart, starting from the current date.
-        let currentDate = Date()
-        for hourOffset in 0 ..< 5 {
-            let entryDate = Calendar.current.date(byAdding: .hour, value: hourOffset, to: currentDate)!
-            let entry = SimpleEntry(date: entryDate, configuration: configuration)
-            entries.append(entry)
-        }
-
-        return Timeline(entries: entries, policy: .atEnd)
+        let (timeStr, height) = nextHighTideFromAppGroup()
+        let now = Date()
+        let refresh = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now.addingTimeInterval(900)
+        let entry = SimpleEntry(date: now, configuration: configuration, nextHighTide: timeStr, height: height)
+        return Timeline(entries: [entry], policy: .after(refresh))
     }
 
-//    func relevances() async -> WidgetRelevances<ConfigurationAppIntent> {
-//        // Generate a list containing the contexts this widget is relevant in.
-//    }
+    private func nextHighTideFromAppGroup() -> (String, Double?) {
+        let defaults = UserDefaults(suiteName: "group.UrbansuferOz.RockFisherman")
+        let time = defaults?.string(forKey: "nextHighTideTime") ?? "--:--"
+        let height = defaults?.object(forKey: "nextHighTideHeight") as? Double
+        return (time, height)
+    }
 }
 
 struct SimpleEntry: TimelineEntry {
     let date: Date
     let configuration: ConfigurationAppIntent
+    let nextHighTide: String
+    let height: Double?
 }
 
 struct Rockfisherman_WidgetEntryView : View {
     var entry: Provider.Entry
 
     var body: some View {
-        VStack {
-            Text("Time:")
-            Text(entry.date, style: .time)
-
-            Text("Favorite Emoji:")
-            Text(entry.configuration.favoriteEmoji)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "arrow.up.circle.fill")
+                .foregroundStyle(.blue)
+            Text("Next High Tide")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(entry.nextHighTide)
+                    .font(.headline)
+                    .monospacedDigit()
+                if let h = entry.height {
+                    Text(String(format: "%.2fm", h))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 }
@@ -83,6 +94,6 @@ extension ConfigurationAppIntent {
 #Preview(as: .systemSmall) {
     Rockfisherman_Widget()
 } timeline: {
-    SimpleEntry(date: .now, configuration: .smiley)
-    SimpleEntry(date: .now, configuration: .starEyes)
+    SimpleEntry(date: .now, configuration: .smiley, nextHighTide: "12:34", height: 1.23)
+    SimpleEntry(date: .now, configuration: .starEyes, nextHighTide: "18:45", height: 0.98)
 }

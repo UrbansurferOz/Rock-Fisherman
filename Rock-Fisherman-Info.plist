@@ -6,5 +6,7 @@
 	<array/>
 	<key>UIBackgroundModes</key>
 	<array/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID is used to securely access saved preferences and locations.</string>
 </dict>
 </plist>

@@ -10,7 +10,8 @@ import SwiftUI
 import WidgetKit
 
 struct Rockfisherman_WidgetControl: ControlWidget {
-    static let kind: String = "UrbansuferOz.Rock-Fisherman.Rockfisherman Widget"
+    // Avoid spaces in kind identifier to ensure stable registration
+    static let kind: String = "UrbansuferOz.Rock-Fisherman.RockfishermanWidget"
 
     var body: some ControlWidgetConfiguration {
         AppIntentControlConfiguration(

@@ -3,6 +3,7 @@ import CryptoKit
 import CoreLocation
 import SwiftUI
 import Security
+import WidgetKit
 
 // MARK: - Weather Service
 class WeatherService: ObservableObject {
@@ -274,6 +275,34 @@ class WeatherService: ObservableObject {
                 }
             }
         }
+        // After updating daily extremes, publish next high tide to the widget app group
+        updateNextHighTideAppGroup()
+    }
+
+    private func updateNextHighTideAppGroup() {
+        let fmtIn = DateFormatter(); fmtIn.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        let fmtOut = DateFormatter(); fmtOut.dateFormat = "HH:mm"
+        let now = Date()
+        var next: (Date, Double)? = nil
+        for d in dailyTideExtremes {
+            for h in d.highs {
+                let iso = String(h.time.prefix(16))
+                if let dt = fmtIn.date(from: iso) {
+                    if dt >= now {
+                        if next == nil || dt < next!.0 { next = (dt, h.height) }
+                    }
+                }
+            }
+        }
+        let defaults = UserDefaults(suiteName: "group.UrbansuferOz.RockFisherman")
+        if let (dt, height) = next {
+            defaults?.set(fmtOut.string(from: dt), forKey: "nextHighTideTime")
+            defaults?.set(height, forKey: "nextHighTideHeight")
+        } else {
+            defaults?.set("--:--", forKey: "nextHighTideTime")
+            defaults?.removeObject(forKey: "nextHighTideHeight")
+        }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func formatTime(_ iso: String) -> String {

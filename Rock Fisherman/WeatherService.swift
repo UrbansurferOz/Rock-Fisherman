@@ -302,6 +302,39 @@ class WeatherService: ObservableObject {
             defaults?.set("--:--", forKey: "nextHighTideTime")
             defaults?.removeObject(forKey: "nextHighTideHeight")
         }
+        // 24h tide samples
+        let windowEnd = now.addingTimeInterval(24*3600)
+        var times: [String] = []
+        var heights: [Double] = []
+        for s in hourlyTide {
+            let iso = String(s.time.prefix(16))
+            if let dt = fmtIn.date(from: iso), dt >= now, dt <= windowEnd {
+                times.append(iso)
+                heights.append(s.height)
+            }
+        }
+        if times.count > 1 {
+            let zipped = zip(times, heights)
+                .compactMap { (t,h) -> (Date,String,Double)? in if let d = fmtIn.date(from: t) { return (d,t,h) } else { return nil } }
+                .sorted { $0.0 < $1.0 }
+            times = zipped.map { $0.1 }
+            heights = zipped.map { $0.2 }
+        }
+        defaults?.set(times, forKey: "tide24hTimes")
+        defaults?.set(heights, forKey: "tide24hHeights")
+        // 24h extremes (cap 6)
+        var ext: [(Date,String,Bool,Double)] = []
+        for d in dailyTideExtremes {
+            for h in d.highs { let iso = String(h.time.prefix(16)); if let dt = fmtIn.date(from: iso), dt >= now, dt <= windowEnd { ext.append((dt, iso, true, h.height)) } }
+            for l in d.lows  { let iso = String(l.time.prefix(16)); if let dt = fmtIn.date(from: iso), dt >= now, dt <= windowEnd { ext.append((dt, iso, false, l.height)) } }
+        }
+        ext.sort { $0.0 < $1.0 }
+        let extTimes = ext.prefix(6).map { $0.1 }
+        let extIsHigh = ext.prefix(6).map { $0.2 ? 1 : 0 }
+        let extHeights = ext.prefix(6).map { $0.3 }
+        defaults?.set(extTimes, forKey: "tide24hExtremeTimes")
+        defaults?.set(extIsHigh, forKey: "tide24hExtremeIsHigh")
+        defaults?.set(extHeights, forKey: "tide24hExtremeHeights")
         WidgetCenter.shared.reloadAllTimelines()
     }
 

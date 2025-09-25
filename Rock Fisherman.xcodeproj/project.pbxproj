@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AA9DFEB72E84FCB600A5E0A9 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA9DFEB62E84FCB500A5E0A9 /* WidgetKit.framework */; };
+		AA9DFEB92E84FCB600A5E0A9 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA9DFEB82E84FCB600A5E0A9 /* SwiftUI.framework */; };
+		AA9DFECA2E84FCB700A5E0A9 /* Rockfisherman WidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA9DFEB42E84FCB500A5E0A9 /* Rockfisherman WidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		AA71273C2E49747F009DF83C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,13 +27,48 @@
 			remoteGlobalIDString = AA71272D2E49747A009DF83C;
 			remoteInfo = "Rock Fisherman";
 		};
+		AA9DFEC82E84FCB700A5E0A9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA7127262E49747A009DF83C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA9DFEB32E84FCB500A5E0A9;
+			remoteInfo = "Rockfisherman WidgetExtension";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AA9DFECF2E84FCB700A5E0A9 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AA9DFECA2E84FCB700A5E0A9 /* Rockfisherman WidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		AA71272E2E49747A009DF83C /* Rock Fisherman.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Rock Fisherman.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA71273B2E49747F009DF83C /* Rock FishermanTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Rock FishermanTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA7127452E49747F009DF83C /* Rock FishermanUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Rock FishermanUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA9DFEB42E84FCB500A5E0A9 /* Rockfisherman WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Rockfisherman WidgetExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA9DFEB62E84FCB500A5E0A9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		AA9DFEB82E84FCB600A5E0A9 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		AA9DFED02E85029C00A5E0A9 /* Rockfisherman WidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Rockfisherman WidgetExtension.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AA9DFECB2E84FCB700A5E0A9 /* Exceptions for "Rockfisherman Widget" folder in "Rockfisherman WidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AA9DFEB32E84FCB500A5E0A9 /* Rockfisherman WidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA7127302E49747A009DF83C /* Rock Fisherman */ = {
@@ -43,6 +84,14 @@
 		AA7127482E49747F009DF83C /* Rock FishermanUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Rock FishermanUITests";
+			sourceTree = "<group>";
+		};
+		AA9DFEBA2E84FCB600A5E0A9 /* Rockfisherman Widget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AA9DFECB2E84FCB700A5E0A9 /* Exceptions for "Rockfisherman Widget" folder in "Rockfisherman WidgetExtension" target */,
+			);
+			path = "Rockfisherman Widget";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,15 +118,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA9DFEB12E84FCB500A5E0A9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA9DFEB92E84FCB600A5E0A9 /* SwiftUI.framework in Frameworks */,
+				AA9DFEB72E84FCB600A5E0A9 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		AA7127252E49747A009DF83C = {
 			isa = PBXGroup;
 			children = (
+				AA9DFED02E85029C00A5E0A9 /* Rockfisherman WidgetExtension.entitlements */,
 				AA7127302E49747A009DF83C /* Rock Fisherman */,
 				AA71273E2E49747F009DF83C /* Rock FishermanTests */,
 				AA7127482E49747F009DF83C /* Rock FishermanUITests */,
+				AA9DFEBA2E84FCB600A5E0A9 /* Rockfisherman Widget */,
+				AA9DFEB52E84FCB500A5E0A9 /* Frameworks */,
 				AA71272F2E49747A009DF83C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,8 +149,18 @@
 				AA71272E2E49747A009DF83C /* Rock Fisherman.app */,
 				AA71273B2E49747F009DF83C /* Rock FishermanTests.xctest */,
 				AA7127452E49747F009DF83C /* Rock FishermanUITests.xctest */,
+				AA9DFEB42E84FCB500A5E0A9 /* Rockfisherman WidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AA9DFEB52E84FCB500A5E0A9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AA9DFEB62E84FCB500A5E0A9 /* WidgetKit.framework */,
+				AA9DFEB82E84FCB600A5E0A9 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,10 +173,12 @@
 				AA71272A2E49747A009DF83C /* Sources */,
 				AA71272B2E49747A009DF83C /* Frameworks */,
 				AA71272C2E49747A009DF83C /* Resources */,
+				AA9DFECF2E84FCB700A5E0A9 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AA9DFEC92E84FCB700A5E0A9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AA7127302E49747A009DF83C /* Rock Fisherman */,
@@ -163,6 +236,28 @@
 			productReference = AA7127452E49747F009DF83C /* Rock FishermanUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		AA9DFEB32E84FCB500A5E0A9 /* Rockfisherman WidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA9DFECC2E84FCB700A5E0A9 /* Build configuration list for PBXNativeTarget "Rockfisherman WidgetExtension" */;
+			buildPhases = (
+				AA9DFEB02E84FCB500A5E0A9 /* Sources */,
+				AA9DFEB12E84FCB500A5E0A9 /* Frameworks */,
+				AA9DFEB22E84FCB500A5E0A9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA9DFEBA2E84FCB600A5E0A9 /* Rockfisherman Widget */,
+			);
+			name = "Rockfisherman WidgetExtension";
+			packageProductDependencies = (
+			);
+			productName = "Rockfisherman WidgetExtension";
+			productReference = AA9DFEB42E84FCB500A5E0A9 /* Rockfisherman WidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -170,7 +265,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1640;
+				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					AA71272D2E49747A009DF83C = {
@@ -183,6 +278,9 @@
 					AA7127442E49747F009DF83C = {
 						CreatedOnToolsVersion = 16.4;
 						TestTargetID = AA71272D2E49747A009DF83C;
+					};
+					AA9DFEB32E84FCB500A5E0A9 = {
+						CreatedOnToolsVersion = 26.0.1;
 					};
 				};
 			};
@@ -203,6 +301,7 @@
 				AA71272D2E49747A009DF83C /* Rock Fisherman */,
 				AA71273A2E49747F009DF83C /* Rock FishermanTests */,
 				AA7127442E49747F009DF83C /* Rock FishermanUITests */,
+				AA9DFEB32E84FCB500A5E0A9 /* Rockfisherman WidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +322,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA7127432E49747F009DF83C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA9DFEB22E84FCB500A5E0A9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +359,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA9DFEB02E84FCB500A5E0A9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +378,11 @@
 			isa = PBXTargetDependency;
 			target = AA71272D2E49747A009DF83C /* Rock Fisherman */;
 			targetProxy = AA7127462E49747F009DF83C /* PBXContainerItemProxy */;
+		};
+		AA9DFEC92E84FCB700A5E0A9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA9DFEB32E84FCB500A5E0A9 /* Rockfisherman WidgetExtension */;
+			targetProxy = AA9DFEC82E84FCB700A5E0A9 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -395,11 +513,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Rock Fisherman/Rock Fisherman.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = ZTWL5H7XZ8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Rock-Fisherman-Info.plist";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to fetch local weather and wave conditions for nearby fishing spots.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -424,11 +545,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Rock Fisherman/Rock Fisherman.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = ZTWL5H7XZ8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Rock-Fisherman-Info.plist";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to fetch local weather and wave conditions for nearby fishing spots.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -520,6 +644,70 @@
 			};
 			name = Release;
 		};
+		AA9DFECD2E84FCB700A5E0A9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = "Rockfisherman WidgetExtension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZTWL5H7XZ8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Rockfisherman Widget/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Rockfisherman Widget";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "UrbansuferOz.Rock-Fisherman.Rockfisherman-Widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA9DFECE2E84FCB700A5E0A9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = "Rockfisherman WidgetExtension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZTWL5H7XZ8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Rockfisherman Widget/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Rockfisherman Widget";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "UrbansuferOz.Rock-Fisherman.Rockfisherman-Widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -555,6 +743,15 @@
 			buildConfigurations = (
 				AA7127562E49747F009DF83C /* Debug */,
 				AA7127572E49747F009DF83C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA9DFECC2E84FCB700A5E0A9 /* Build configuration list for PBXNativeTarget "Rockfisherman WidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA9DFECD2E84FCB700A5E0A9 /* Debug */,
+				AA9DFECE2E84FCB700A5E0A9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

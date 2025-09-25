@@ -667,7 +667,32 @@ private struct DailyRowView: View {
                         }
                     }
                 }
-                if let hi = forecast.highTideHeight, let lo = forecast.lowTideHeight {
+                // Render all tide extremes for the day in chronological order
+                if let highs = forecast.tideHighs, let lows = forecast.tideLows, (!highs.isEmpty || !lows.isEmpty) {
+                    let fmtIn = DateFormatter(); fmtIn.dateFormat = "yyyy-MM-dd'T'HH:mm"
+                    let fmtOut = DateFormatter(); fmtOut.dateFormat = "HH:mm"
+                    let items: [(String, Bool, Double)] = {
+                        var tmp: [(Date, Bool, Double)] = []
+                        for h in highs { if let d = fmtIn.date(from: String(h.time.prefix(16))) { tmp.append((d, true, h.height)) } }
+                        for l in lows  { if let d = fmtIn.date(from: String(l.time.prefix(16))) { tmp.append((d, false, l.height)) } }
+                        return tmp.sorted { $0.0 < $1.0 }.map { (fmtOut.string(from: $0.0), $0.1, $0.2) }
+                    }()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        ForEach(Array(items.enumerated()), id: \.0) { _, it in
+                            HStack(spacing: 6) {
+                                Image(systemName: it.1 ? "arrow.up" : "arrow.down")
+                                    .font(.caption2)
+                                    .foregroundColor(.teal)
+                                Text(it.0)
+                                    .font(.caption)
+                                Text(String(format: "%.2fm", it.2))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                } else if let hi = forecast.highTideHeight, let lo = forecast.lowTideHeight {
+                    // Fallback to legacy single-summary if full lists are unavailable
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.up")
                             .font(.caption2)

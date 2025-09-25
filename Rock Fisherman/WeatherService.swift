@@ -252,13 +252,25 @@ class WeatherService: ObservableObject {
         for i in 0..<dailyForecast.count {
             let day = dailyForecast[i].date
             if let d = dayToExtremes[day] {
-                if let maxHigh = d.highs.max(by: { $0.height < $1.height }) {
+                // Attach all highs/lows for the day; sort chronologically by ISO string
+                let highsChrono = d.highs.sorted { $0.time < $1.time }
+                let lowsChrono  = d.lows.sorted { $0.time < $1.time }
+                dailyForecast[i].tideHighs = highsChrono
+                dailyForecast[i].tideLows = lowsChrono
+                // Preserve single-field summary (max high / min low) for compact displays
+                if let maxHigh = highsChrono.max(by: { $0.height < $1.height }) {
                     dailyForecast[i].highTideHeight = maxHigh.height
                     dailyForecast[i].highTideTime = formatTime(maxHigh.time)
+                } else {
+                    dailyForecast[i].highTideHeight = nil
+                    dailyForecast[i].highTideTime = nil
                 }
-                if let minLow = d.lows.min(by: { $0.height < $1.height }) {
+                if let minLow = lowsChrono.min(by: { $0.height < $1.height }) {
                     dailyForecast[i].lowTideHeight = minLow.height
                     dailyForecast[i].lowTideTime = formatTime(minLow.time)
+                } else {
+                    dailyForecast[i].lowTideHeight = nil
+                    dailyForecast[i].lowTideTime = nil
                 }
             }
         }
@@ -888,6 +900,9 @@ struct DailyForecast: Identifiable, Codable {
     var lowTideHeight: Double?
     var highTideTime: String?
     var lowTideTime: String?
+    // New: carry all tide extremes for the day (chronological list handled in views)
+    var tideHighs: [TideExtreme]?
+    var tideLows: [TideExtreme]?
     
     enum CodingKeys: String, CodingKey {
         case date
@@ -904,6 +919,8 @@ struct DailyForecast: Identifiable, Codable {
         case lowTideHeight
         case highTideTime
         case lowTideTime
+        case tideHighs
+        case tideLows
     }
     
     var formattedDate: String {
